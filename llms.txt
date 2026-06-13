@@ -1,0 +1,26 @@
+# @vllnt/convex-email
+
+> Durable, transport-agnostic outbound transactional email queue — enqueue, retry, idempotent send, and per-message delivery status as a Convex component
+
+`@vllnt/convex-email` is a publishable Convex component. It targets `convex@^1.41.0`.
+It stores one sandboxed table - `messages` (named by a host-opaque `messageId`, carrying opaque `to`/`from` addresses, a host-supplied `transport` adapter tag, a `status` of `queued`/`sending`/`sent`/`failed`, an opaque host `payload`, `attempts`/`maxAttempts` retry bookkeeping, an optional `idempotencyKey`/`subjectRef`/`providerId`/`error`, and `createdAt`/`updatedAt` server timestamps). A host mutation calls `enqueue(messageId, to, from, transport, opts?)` to record the message in `queued` and gets its id back immediately; the host's OWN transport sender then claims it with `markSending`, dispatches it through whatever adapter the host configured (JMAP, an HTTP API, an SMTP-relay shim), and reports the outcome with `markSent(providerId?)` or `markFailed(error?)`; clients poll `get(messageId)` or page `listByStatus(status, paginationOpts)` (reactively in Convex). PROVIDER-NEUTRAL BY MANDATE - the component records send intent and status and NEVER calls a mail provider; no vendor (Stalwart, Resend, SES, Postmark) is baked in, so it is `convex-email`, not `convex-stalwart`. `markFailed` re-queues the message while `attempts < maxAttempts`, else lands it in terminal `failed`; the host owns the backoff timing. Terminal states are final - any transition out of `sent`/`failed` is rejected, so a late or duplicate delivery callback never overwrites a recorded outcome. An `idempotencyKey` dedups a re-enqueue (a retry never double-sends). Time is read from the server clock inside every handler - no caller-supplied clock. A bounded, self-rescheduling `prune` (and a built-in daily cron) sweeps terminal messages past a retention window. The host owns the transport, auth, and the `payload` type (the client is generic over it, with an optional `payloadValidator` parser narrowing the opaque stored value at the boundary - never a `v.any()` dump); the component owns only the queue/retry/status core. Mount-safe: it runs correctly under multiple named `app.use` mounts.
+
+## Docs
+
+- [README](README.md): Project overview, installation, usage examples, architecture
+- [API Reference](docs/API.md): Public class methods, return shapes, error codes, cron
+- [Changelog](CHANGELOG.md): Version history and release notes
+- [Contributing](CONTRIBUTING.md): Development setup, validation commands, release workflow
+
+## Examples
+
+- [Example component wrapper](example/convex/example.ts): Host-app wrapper functions
+- [Example tests](example/convex/example.test.ts): End-to-end usage coverage with `convex-test`
+
+## Optional
+
+- [AGENTS](AGENTS.md): Canonical agent instructions for this repository
+- [Security Policy](SECURITY.md): Vulnerability reporting policy
+- [Code of Conduct](CODE_OF_CONDUCT.md): Community participation guidelines
+- [License](LICENSE): MIT license
+- [Full source bundle](llms-full.txt): Aggregated README, changelog, API docs, and key source files
