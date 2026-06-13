@@ -1,6 +1,7 @@
 # API Reference — @vllnt/convex-email
 
-**Compatibility:** `convex@^1.41.0`
+**Compatibility:** `convex@^1.41.0` · optional `nodemailer@^8.0.4` (only for the
+[SMTP transport](#smtp-transport-optional---vllntconvex-emailsmtp))
 
 Construct the client with the mounted component and optional host config:
 
@@ -128,3 +129,102 @@ Cadence is a static module constant (Convex cron definitions are static per
 deployment). A host wanting a different cadence drives `prune` from its own
 scheduler with an explicit `before` cutoff. The cron is per-mount, so each
 `app.use(component, { name })` instance prunes its own sandbox independently.
+
+## SMTP transport (optional) — `@vllnt/convex-email/smtp`
+
+A separate, optional export that actually sends a queued message over **generic
+SMTP** (Stalwart, Postfix, any server). It is **host-side glue**, not part of the
+sandboxed component: a Convex component runs in the V8 runtime and cannot ship a
+`"use node"` action, and SMTP is a raw-socket protocol `fetch()` cannot speak, so
+the real send runs in the **host's own `"use node"` action**, which imports this
+module. The SMTP server is host config — no vendor is baked in. `nodemailer` is an
+**optional peer dependency** (`^8.0.4`); importing this entry is the opt-in, and a
+backend-only consumer (importing only `@vllnt/convex-email`) pulls zero SMTP code.
+
+> The pinned floor `nodemailer@^8.0.4` is the first release fixing the
+> `envelope.size` CRLF SMTP-command-injection advisory (GHSA-c7w3-x93f-qmm8 /
+> CVE-2025-14874); the adapter additionally rejects CR/LF in every address,
+> subject, and header value it sets.
+
+### Types
+
+```ts
+interface SmtpConfig {
+  host: string;
+  port: number;
+  secure?: boolean; // defaults to true for port 465, else false
+  auth?: { user: string; pass: string }; // omit for an unauthenticated relay
+  from?: string; // default From when a message omits one
+}
+interface SmtpMessage {
+  to: string;
+  from?: string; // falls back to SmtpConfig.from
+  subject?: string;
+  text?: string;
+  html?: string; // one of text/html is required
+  replyTo?: string;
+  headers?: Record<string, string>;
+}
+interface SmtpSendResult {
+  messageId: string; // the SMTP handle — store as the queue providerId
+  accepted: string[];
+  rejected: string[];
+}
+interface SmtpTransport {
+  sendMail(options): Promise<SmtpSendInfo>;
+} // the injected seam
+```
+
+### `validateSmtpConfig(config) → SmtpConfig & { secure: boolean }` (pure)
+
+Validate a host {@link SmtpConfig} and resolve `secure` (defaults to `true` for
+port 465, else `false`). Throws a plain `Error` on an invalid host, port
+(must be an integer in 1..65535), or auth block. No I/O.
+
+### `toMailOptions(message, config) → SmtpMailOptions` (pure)
+
+Build the transport `sendMail` options from a {@link SmtpMessage}: resolve `from`
+(message → `config.from`), require one of `text`/`html`, and reject CR/LF
+injection in `to`/`from`/`replyTo`/`subject`/`headers`. Throws on an invalid
+message. No I/O.
+
+### `sendViaSmtp(transport, message, config?) → Promise<SmtpSendResult>` (pure, injectable)
+
+Send one message through an **injected** `SmtpTransport` and normalize the result.
+Validates the message first (`toMailOptions`), then calls `transport.sendMail`.
+Throws when the transport throws (the host catches it and calls `markFailed`).
+Pass a real `nodemailer` transport in production, or a fake in a unit test — this
+is the 100%-covered core, network-free.
+
+### `createSmtpTransport(config) → SmtpTransport` (Node only)
+
+Build a real `nodemailer` transport from a `SmtpConfig` (validated first). The thin
+`nodemailer.createTransport` wrapper — the only Node-runtime piece. Excluded from
+the coverage gate (consumer-E2E verified); call it from a `"use node"` action.
+
+### `createSmtpSender(config) → (message: SmtpMessage) => Promise<SmtpSendResult>` (Node only)
+
+Build a bound sender over a real `nodemailer` transport — the one call a host wires
+into its `"use node"` flush action.
+
+```ts
+"use node";
+import { createSmtpSender } from "@vllnt/convex-email/smtp";
+
+const send = createSmtpSender({
+  host: process.env.SMTP_HOST!,
+  port: 465,
+  secure: true,
+  auth: { user: process.env.SMTP_USER!, pass: process.env.SMTP_PASS! },
+});
+const { messageId } = await send({ to, from, subject, html });
+await email.markSent(ctx, id, { providerId: messageId });
+```
+
+### Wiring to the queue
+
+The host's flush action: `listByStatus("queued")` → for each, `markSending` →
+`send(...)` → `markSent({ providerId })` or `markFailed({ error })`. `markFailed`
+re-queues until the attempt budget is spent. See `example/convex/example.ts`
+(`flushQueuedOverSmtp`) for the full loop exercised under `convex-test` with a fake
+transport.

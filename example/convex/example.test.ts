@@ -601,6 +601,67 @@ describe("email — built-in prune cron", () => {
   });
 });
 
+describe("email — queue → SMTP send wiring (flushQueuedOverSmtp)", () => {
+  test("flushes queued messages over the (fake) SMTP transport and records the outcome", async () => {
+    const t = setup();
+    await t.mutation(api.example.enqueue, {
+      messageId: "ok1",
+      to: "user@x.com",
+      from: "no-reply@app.com",
+      transport: "smtp",
+      payload: { subject: "Hi", html: "<p>Welcome</p>" },
+    });
+    await t.mutation(api.example.enqueue, {
+      messageId: "bad1",
+      to: "bounce@x.com",
+      from: "no-reply@app.com",
+      transport: "smtp",
+    });
+
+    const outcomes = await t.mutation(api.example.flushQueuedOverSmtp, {});
+    expect(outcomes).toContainEqual({
+      messageId: "ok1",
+      outcome: "sent",
+      providerId: "<smtp-user@x.com>",
+    });
+    expect(outcomes).toContainEqual({ messageId: "bad1", outcome: "failed" });
+
+    const sent = await t.query(api.example.get, { messageId: "ok1" });
+    expect(sent?.status).toBe("sent");
+    expect(sent?.providerId).toBe("<smtp-user@x.com>");
+
+    // the bounce re-queued (attempts remain under the default budget of 5)
+    const bounced = await t.query(api.example.get, { messageId: "bad1" });
+    expect(bounced?.status).toBe("queued");
+    expect(bounced?.attempts).toBe(1);
+    expect(bounced?.error).toMatch(/550 mailbox unavailable/);
+  });
+
+  test("flush on an empty queue is a no-op", async () => {
+    const t = setup();
+    expect(await t.mutation(api.example.flushQueuedOverSmtp, {})).toEqual([]);
+  });
+
+  test("flush respects the limit", async () => {
+    const t = setup();
+    for (let i = 0; i < 3; i++) {
+      vi.setSystemTime(i);
+      await t.mutation(api.example.enqueue, {
+        messageId: `f${i}`,
+        to: "user@x.com",
+        from: "no-reply@app.com",
+        transport: "smtp",
+        payload: { subject: "s", html: "<p>h</p>" },
+      });
+    }
+    const outcomes = await t.mutation(api.example.flushQueuedOverSmtp, {
+      limit: 2,
+    });
+    expect(outcomes).toHaveLength(2);
+    expect(outcomes.map((o) => o.messageId)).toEqual(["f0", "f1"]);
+  });
+});
+
 describe("email — host/component table isolation", () => {
   test("a host note lives in the host table, separate from the component", async () => {
     const t = setup();

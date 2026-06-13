@@ -25,6 +25,11 @@ src/
 ├── client/
 │   ├── index.ts           # Email<TPayload> class (consumer-facing API)
 │   └── types.ts           # public TypeScript interfaces
+├── smtp/                   # OPTIONAL generic-SMTP transport (host-side glue, `./smtp` export)
+│   ├── send.ts            # PURE sendViaSmtp / validateSmtpConfig / toMailOptions (100% covered)
+│   ├── transport.ts       # THIN nodemailer wrapper (createSmtpTransport/Sender) — coverage-EXCLUDED
+│   ├── types.ts           # SmtpConfig/SmtpMessage/SmtpTransport/SmtpSendResult
+│   └── index.ts           # barrel re-export
 └── component/
     ├── schema.ts           # sandboxed table: messages {messageId, to, from, transport, status, payload?, attempts, ...}
     ├── convex.config.ts    # defineComponent("email")
@@ -75,6 +80,26 @@ second instance (`app.use(component, { name })`) for a static partition.
   Convex runtime has `fetch()` but no raw SMTP socket, so a real adapter reaches a server over HTTP — but
   that adapter lives in the host, not here. Swapping the backing vendor never forces a rename.
 
+- **Optional generic-SMTP transport — provider-neutral, optional-peer, host-side `"use node"`:** the one
+  shipped adapter (`@vllnt/convex-email/smtp`) sends over GENERIC SMTP — config `{ host, port, secure,
+  auth, from? }`, host-supplied — and works with Stalwart, Postfix, ANY SMTP server. SMTP is the
+  protocol; the server is host config, so NO vendor is baked in (still `convex-email`, never
+  `convex-stalwart`; swapping the server is a config change). `nodemailer` is an OPTIONAL peer dependency
+  (`peerDependenciesMeta.nodemailer.optional`, floor `^8.0.4` — the release fixing the `envelope.size`
+  CRLF injection advisory GHSA-c7w3-x93f-qmm8); the queue core still has ZERO third-party runtime deps,
+  and only a host importing `./smtp` pulls it (the tree-shake boundary is the export entry, exactly like
+  an optional `./react`). **A Convex component CANNOT ship a `"use node"` action** — components run in V8
+  only, the Node runtime is host-only (verified against Convex docs + the official `@convex-dev/resend`
+  component, which sends over Resend's HTTP API with `fetch()`, no `"use node"`). SMTP is a raw-socket
+  protocol `fetch()` cannot speak, so the real `nodemailer` send runs in the HOST's own `"use node"`
+  action that imports `createSmtpSender(config)`; the sandboxed component stays a pure queue/retry/status
+  core that never sends. The adapter is split for coverage: the PURE `sendViaSmtp(transport, message,
+  config?)` + `validateSmtpConfig` + `toMailOptions` are injected (a fake transport, no network) and IN
+  `coverage.include` at 100% (they also reject CRLF header injection); only the THIN real-`nodemailer`
+  wrapper (`src/smtp/transport.ts`) is coverage-EXCLUDED — a trivial pass-through, consumer-E2E verified,
+  exactly as a `./react` live-backend path is the consuming app's E2E. The host wires it to the queue:
+  `listByStatus("queued")` → `markSending` → send → `markSent({ providerId })` / `markFailed`.
+
 - **Terminal states are final:** `markSent`/`markFailed`/`markSending` reject any transition out of a
   terminal `sent`/`failed` with `ConvexError({ code: "TERMINAL_STATE" })`. A late or duplicate delivery
   callback — common with at-least-once webhooks — can never overwrite a recorded outcome. `markSent` is
@@ -115,9 +140,13 @@ second instance (`app.use(component, { name })`) for a static partition.
 - Explicit `args` + `returns` on every Convex function.
 - Host data via typed generics / host validators — never `v.any()` dumps; `jsonValue` is the documented
   last resort for the stored opaque `payload`.
-- No hardcoded provider/vendor anywhere — the transport is a host-supplied string tag + host-driven send.
+- No hardcoded provider/vendor anywhere — the transport is a host-supplied string tag + host-driven send;
+  the optional SMTP adapter is generic over any SMTP server (host config), no vendor in the name or code.
 - 100% test coverage is BLOCKING (`vitest.config.mts` thresholds: statements, branches, functions, lines).
-- Runtime deps: only official `@convex-dev/*` + `@vllnt/*`.
+  The thin real-`nodemailer` wrapper (`src/smtp/transport.ts`) is deliberately OUT of `coverage.include`
+  (consumer-E2E verified); the pure `src/smtp/send.ts` IS in it at 100%.
+- Runtime deps: only official `@convex-dev/*` + `@vllnt/*` (zero in the queue core). `nodemailer` is an
+  OPTIONAL peer dep for the SMTP transport only — never a hard runtime dependency.
 
 ## Docs sync
 
@@ -128,6 +157,9 @@ second instance (`app.use(component, { name })`) for a static partition.
 | Schema / table / indexes | README Architecture, `docs/API.md` |
 | Error codes | `docs/API.md` → `## Error codes` table |
 | `peerDependencies.convex` version | `llms.txt` context line (`convex@^X.Y.Z`), `docs/API.md` Compatibility line, README Installation peer note |
+| `peerDependencies.nodemailer` floor (optional SMTP peer) | `docs/API.md` Compatibility + SMTP section, `llms.txt` context, README Installation + Transports, CHANGELOG |
+| SMTP transport API (`sendViaSmtp` / `validateSmtpConfig` / `toMailOptions` / `createSmtpSender` / `SmtpConfig` / `SmtpMessage`) | README Transports, `docs/API.md` SMTP section, `scripts/generate-llms.mjs` source list, regenerate `llms-full.txt` |
+| `coverage.include` (a new covered source file) | `vitest.config.mts` include list; a new file without a test fails CI |
 | Lifecycle / state machine | `docs/API.md` mutation sections, Key design decisions above |
 | Any change | `pnpm generate:llms` to keep `llms-full.txt` current |
 

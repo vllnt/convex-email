@@ -14,6 +14,12 @@ export default defineConfig({
       include: [
         "src/shared.ts",
         "src/client/index.ts",
+        // The pure, injectable SMTP send + config logic — driven by a fake
+        // transport, 100% covered with no network. The thin real-`nodemailer`
+        // wrapper (`src/smtp/transport.ts`) is deliberately NOT listed: it is a
+        // trivial pass-through to the Node-only library, consumer-E2E verified
+        // (exactly as the `./react` live-backend path is the consuming app's E2E).
+        "src/smtp/send.ts",
         "src/component/mutations.ts",
         "src/component/queries.ts",
         "src/component/validators.ts",

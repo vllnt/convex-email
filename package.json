@@ -1,6 +1,6 @@
 {
   "name": "@vllnt/convex-email",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Durable, transport-agnostic outbound transactional email queue — enqueue, retry, idempotent send, and per-message delivery status as a Convex component",
   "license": "MIT",
   "type": "module",
@@ -16,6 +16,10 @@
       "default": "./dist/client/index.js"
     },
     "./test": "./src/test.ts",
+    "./smtp": {
+      "types": "./dist/smtp/index.d.ts",
+      "default": "./dist/smtp/index.js"
+    },
     "./_generated/component.js": {
       "types": "./dist/component/_generated/component.d.ts"
     },
@@ -51,16 +55,24 @@
   },
   "dependencies": {},
   "peerDependencies": {
-    "convex": "^1.41.0"
+    "convex": "^1.41.0",
+    "nodemailer": "^8.0.4"
+  },
+  "peerDependenciesMeta": {
+    "nodemailer": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@edge-runtime/vm": "^5.0.0",
+    "@types/nodemailer": "^8.0.1",
     "@vitest/coverage-v8": "^4.1.8",
     "@vllnt/eslint-config": "^1.0.0",
     "@vllnt/typescript": "^1.0.0",
     "convex": "^1.41.0",
     "convex-test": "^0.0.53",
     "eslint": "^9.0.0",
+    "nodemailer": "^8.0.11",
     "prettier": "^3.4.0",
     "typescript": "^5.7.0",
     "vitest": "^4.1.8"
@@ -94,6 +106,8 @@
     "email",
     "transactional-email",
     "email-queue",
-    "transport-agnostic"
+    "transport-agnostic",
+    "smtp",
+    "nodemailer"
   ]
 }

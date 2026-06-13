@@ -3,6 +3,8 @@ import { v } from "convex/values";
 import { components } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 import { Email } from "../../src/client";
+import { sendViaSmtp } from "../../src/smtp/send";
+import type { SmtpSendInfo, SmtpTransport } from "../../src/smtp/types";
 
 /**
  * Host-app wrappers. The host owns auth and the transport: resolve identity here,
@@ -204,5 +206,82 @@ export const getNote = query({
       .withIndex("by_message_id", (q) => q.eq("messageId", messageId))
       .unique();
     return row?.note ?? null;
+  },
+});
+
+/**
+ * A fake SMTP transport — stands in for `nodemailer` so the queue→send wiring is
+ * exercised in edge-runtime with no socket. A real host instead calls
+ * `createSmtpSender(config)` from `@vllnt/convex-email/smtp` inside a `"use node"`
+ * action and sends over a real server (Stalwart, Postfix, any SMTP host).
+ */
+function fakeSmtpTransport(): SmtpTransport {
+  return {
+    sendMail: (options): Promise<SmtpSendInfo> => {
+      if (options.to === "bounce@x.com") {
+        return Promise.reject(new Error("550 mailbox unavailable"));
+      }
+      return Promise.resolve({
+        messageId: `<smtp-${options.to}>`,
+        accepted: [options.to],
+        rejected: [],
+      });
+    },
+  };
+}
+
+/**
+ * The host's transport sender, the wiring this component is built for: page the
+ * `queued` backlog, claim each (`markSending`), send it over SMTP via the pure
+ * `sendViaSmtp`, then record the outcome (`markSent` with the SMTP `providerId`,
+ * or `markFailed`). In a real app this is a `"use node"` action driving
+ * `createSmtpSender(config)`; here it is a mutation over a fake transport so the
+ * full loop runs under `convex-test`. Returns the per-message outcomes.
+ */
+export const flushQueuedOverSmtp = mutation({
+  args: { limit: v.optional(v.number()) },
+  returns: v.array(
+    v.object({
+      messageId: v.string(),
+      outcome: v.union(v.literal("sent"), v.literal("failed")),
+      providerId: v.optional(v.string()),
+    }),
+  ),
+  handler: async (ctx, { limit }) => {
+    const transport = fakeSmtpTransport();
+    const queued = await email.listByStatus(ctx, "queued", {
+      cursor: null,
+      numItems: limit ?? 50,
+    });
+    const outcomes: Array<{
+      messageId: string;
+      outcome: "sent" | "failed";
+      providerId?: string;
+    }> = [];
+    for (const msg of queued.page) {
+      await email.markSending(ctx, msg.messageId);
+      const body =
+        typeof msg.payload === "object" && msg.payload !== null
+          ? (msg.payload as { subject?: string; html?: string })
+          : {};
+      try {
+        const { messageId: providerId } = await sendViaSmtp(
+          transport,
+          {
+            to: msg.to,
+            from: msg.from,
+            subject: body.subject,
+            html: body.html ?? "<p></p>",
+          },
+          {},
+        );
+        await email.markSent(ctx, msg.messageId, { providerId });
+        outcomes.push({ messageId: msg.messageId, outcome: "sent", providerId });
+      } catch (e) {
+        await email.markFailed(ctx, msg.messageId, { error: String(e) });
+        outcomes.push({ messageId: msg.messageId, outcome: "failed" });
+      }
+    }
+    return outcomes;
   },
 });

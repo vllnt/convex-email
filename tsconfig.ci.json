@@ -1,5 +1,11 @@
 {
   "extends": "./tsconfig.json",
-  "include": ["src/shared.ts", "src/client/**/*"],
-  "exclude": ["node_modules", "dist", "src/component/**/*", "src/test.ts"]
+  "include": ["src/shared.ts", "src/client/**/*", "src/smtp/**/*"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/component/**/*",
+    "src/test.ts",
+    "src/smtp/**/*.test.ts"
+  ]
 }

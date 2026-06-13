@@ -23,7 +23,8 @@ transactional newsletter — same queue; payload and transport are config.
 ## Features
 
 - **Enqueue-and-return** — `enqueue(messageId, to, from, transport, opts?)` inserts a `queued` message and hands back its id immediately; the caller never blocks on the send.
-- **Host-driven transport** — the host's sender claims a message (`markSending`), dispatches it through whatever adapter it configured (JMAP, an HTTP API, an SMTP-relay shim), and reports the outcome (`markSent` / `markFailed`). The component never reaches a provider; `transport` is just an opaque host string tag.
+- **Host-driven transport** — the host's sender claims a message (`markSending`), dispatches it through whatever adapter it configured (generic SMTP, JMAP, an HTTP API), and reports the outcome (`markSent` / `markFailed`). The component never reaches a provider; `transport` is just an opaque host string tag.
+- **Optional generic SMTP adapter** — `@vllnt/convex-email/smtp` sends through any SMTP server (Stalwart, Postfix, any provider's relay) from the host's `"use node"` action. `nodemailer` is an *optional* peer dep; the queue core stays dependency-clean. See [Transports](#transports).
 - **Idempotent enqueue** — an `idempotencyKey` makes a re-enqueue return the existing message (`deduplicated: true`) instead of inserting a duplicate, so a retried request or an at-least-once producer can never queue the same email twice. A bare duplicate `messageId` throws `ConvexError({ code: "DUPLICATE_MESSAGE" })`.
 - **Retry with budget** — `markFailed` re-queues the message (`sending → queued`) while `attempts < maxAttempts`, then lands it in terminal `failed`. The component owns the count and the retry-vs-terminal decision; the host owns the backoff timing.
 - **Terminal states are final** — any transition out of `sent`/`failed` is rejected with `ConvexError({ code: "TERMINAL_STATE" })`, so a late or duplicate delivery callback can never overwrite a recorded outcome. `markSent` is idempotent on an already-`sent` message.
@@ -64,7 +65,10 @@ blocklists, DMARC alignment) — those are mail-server and infra concerns.
 pnpm add @vllnt/convex-email
 ```
 
-Peer dependency: `convex@^1.41.0`.
+Peer dependency: `convex@^1.41.0`. The queue core has **zero third-party runtime
+deps**. `nodemailer@^8.0.4` is an **optional** peer dependency — install it only if
+you use the generic SMTP transport (`@vllnt/convex-email/smtp`); see
+[Transports](#transports).
 
 ## Usage
 
@@ -147,6 +151,103 @@ See [docs/API.md](docs/API.md). Summary:
 Client options:
 `new Email(component, { payloadValidator?, maxAttempts? })` (`maxAttempts` default 5).
 `prune` opts: `{ before?; batch? }` (defaults `before = Date.now()`, `batch = 200`).
+
+## Transports
+
+The queue is **transport-agnostic** — it records intent and status and never
+sends. The actual send is the host's job, and the package ships **one optional,
+generic transport adapter** to make the common case turnkey:
+
+**Generic SMTP** (`@vllnt/convex-email/smtp`) — sends through **any** SMTP server:
+**Stalwart, Postfix, a localhost MTA, or any provider's SMTP relay**. SMTP is the
+protocol; the server is host config — there is no vendor baked in, so the package
+stays `convex-email`, never `convex-stalwart`. Swap the backing server (Stalwart →
+SES SMTP → Postfix) by changing config alone; no rename, no code change.
+
+```ts
+import { createSmtpSender } from "@vllnt/convex-email/smtp";
+
+const send = createSmtpSender({
+  host: process.env.SMTP_HOST!, // any SMTP server — Stalwart, Postfix, a relay
+  port: 465,
+  secure: true, // implicit TLS (defaults to true for port 465)
+  auth: { user: process.env.SMTP_USER!, pass: process.env.SMTP_PASS! },
+  from: "no-reply@app.com", // default From when a message omits one
+});
+```
+
+**Why it lives host-side (a `"use node"` action), not in the component.** A Convex
+component runs in the **V8 runtime** and **cannot ship a `"use node"` action** — the
+Node runtime is host-only. SMTP is a raw-socket protocol that `fetch()` cannot
+speak (which is exactly why it needs Node). So the real `nodemailer` send runs in
+**your** `"use node"` action; the sandboxed component stays a pure
+queue/retry/status core. (The official `@convex-dev/resend` component sends over
+Resend's *HTTP* API with `fetch()` for the same reason — no Node in a component.)
+
+**`nodemailer` is an optional peer dependency** (exactly like `react` for a
+front-tooling layer): the queue core installs and runs with **zero third-party
+runtime deps**. Only a host that imports `@vllnt/convex-email/smtp` needs
+`nodemailer`:
+
+```bash
+pnpm add nodemailer   # only if you use the SMTP transport
+```
+
+The adapter is two layers: a **pure, injectable** `sendViaSmtp(transport, message,
+config?)` (driven by an injected transport — unit-tested to 100% with no network,
+runs anywhere) plus a **thin `nodemailer` wrapper** (`createSmtpTransport` /
+`createSmtpSender`) that is the only Node-only piece (consumer-E2E verified). Bring
+your own transport — pass any object with `sendMail(opts)` to `sendViaSmtp` — to
+use a different SMTP library or a fake in tests.
+
+### Wiring the queue to SMTP
+
+The host's flush action pages the `queued` backlog, claims each message
+(`markSending`), sends it, and records the outcome (`markSent` with the SMTP
+message id as `providerId`, or `markFailed`). `markFailed` re-queues until the
+attempt budget is spent — the host reschedules with its own backoff:
+
+```ts
+"use node";
+import { internalAction } from "./_generated/server";
+import { createSmtpSender } from "@vllnt/convex-email/smtp";
+import { Email } from "@vllnt/convex-email";
+import { components } from "./_generated/api";
+
+const email = new Email<{ subject: string; html: string }>(components.email);
+const send = createSmtpSender({
+  host: process.env.SMTP_HOST!,
+  port: 465,
+  secure: true,
+  auth: { user: process.env.SMTP_USER!, pass: process.env.SMTP_PASS! },
+});
+
+export const flushQueued = internalAction({
+  handler: async (ctx) => {
+    const { page } = await email.listByStatus(ctx, "queued", {
+      cursor: null,
+      numItems: 50,
+    });
+    for (const msg of page) {
+      await email.markSending(ctx, msg.messageId);
+      try {
+        const { messageId } = await send({
+          to: msg.to,
+          from: msg.from,
+          subject: msg.payload?.subject,
+          html: msg.payload?.html,
+        });
+        await email.markSent(ctx, msg.messageId, { providerId: messageId });
+      } catch (e) {
+        await email.markFailed(ctx, msg.messageId, { error: String(e) });
+      }
+    }
+  },
+});
+```
+
+See `example/convex/` (`flushQueuedOverSmtp`) for the full loop exercised end to
+end against the component runtime with a fake transport.
 
 ## React
 
