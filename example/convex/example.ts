@@ -5,6 +5,8 @@ import { mutation, query } from "./_generated/server";
 import { Email } from "../../src/client";
 import { sendViaSmtp } from "../../src/smtp/send";
 import type { SmtpSendInfo, SmtpTransport } from "../../src/smtp/types";
+import { sendViaJmap } from "../../src/jmap/send";
+import type { JmapConfig, JmapFetch } from "../../src/jmap/types";
 
 /**
  * Host-app wrappers. The host owns auth and the transport: resolve identity here,
@@ -280,6 +282,174 @@ export const flushQueuedOverSmtp = mutation({
       } catch (e) {
         await email.markFailed(ctx, msg.messageId, { error: String(e) });
         outcomes.push({ messageId: msg.messageId, outcome: "failed" });
+      }
+    }
+    return outcomes;
+  },
+});
+
+/** A resolved JMAP config for the example — a real host produces this via `discoverJmapSession`. */
+const jmapConfig: JmapConfig = {
+  endpoint: "https://mail.test/jmap",
+  token: "test-token",
+  accountId: "acc",
+  identityId: "ident",
+  mailboxId: "sent",
+};
+
+/**
+ * A fake JMAP `fetch` — stands in for the host's runtime `fetch` so the queue→JMAP
+ * wiring is exercised in edge-runtime with no network. It reads the recipient out
+ * of the `Email/set` create and returns a JMAP success body, except for
+ * `bounce@x.com`, which it fails with a non-2xx status (so `sendViaJmap` throws and
+ * the host calls `markFailed`). A real host instead passes its own
+ * `(url, init) => fetch(url, init)` to `sendViaJmap` / `createJmapSender` in a
+ * plain Convex action — no `"use node"`.
+ */
+function fakeJmapFetch(): JmapFetch {
+  return (_url, init) => {
+    const body = JSON.parse(init.body ?? "{}") as {
+      methodCalls?: Array<[string, { create?: { draft?: { to?: Array<{ email?: string }> } } }, string]>;
+    };
+    const emailCall = (body.methodCalls ?? []).find((c) => c[0] === "Email/set");
+    const to = emailCall?.[1]?.create?.draft?.to?.[0]?.email;
+    if (to === "bounce@x.com") {
+      return Promise.resolve({
+        ok: false,
+        status: 550,
+        json: () => Promise.resolve(null),
+      });
+    }
+    return Promise.resolve({
+      ok: true,
+      status: 200,
+      json: () =>
+        Promise.resolve({
+          methodResponses: [
+            ["Email/set", { created: { draft: { id: `email-${to}` } } }, "0"],
+            ["EmailSubmission/set", { created: { sub: { id: `jmap-${to}` } } }, "1"],
+          ],
+        }),
+    });
+  };
+}
+
+/**
+ * The queue→JMAP send loop — the same wiring as `flushQueuedOverSmtp`, but over the
+ * generic JMAP transport: page `queued`, claim each (`markSending`), send it over
+ * JMAP via the pure `sendViaJmap`, then record the outcome. In a real app this is a
+ * plain Convex action (no `"use node"`) driving `createJmapSender(config, fetch)`;
+ * here it is a mutation over a fake `fetch` so the full loop runs under `convex-test`.
+ */
+export const flushQueuedOverJmap = mutation({
+  args: { limit: v.optional(v.number()) },
+  returns: v.array(
+    v.object({
+      messageId: v.string(),
+      outcome: v.union(v.literal("sent"), v.literal("failed")),
+      providerId: v.optional(v.string()),
+    }),
+  ),
+  handler: async (ctx, { limit }) => {
+    const fetchFn = fakeJmapFetch();
+    const queued = await email.listByStatus(ctx, "queued", {
+      cursor: null,
+      numItems: limit ?? 50,
+    });
+    const outcomes: Array<{
+      messageId: string;
+      outcome: "sent" | "failed";
+      providerId?: string;
+    }> = [];
+    for (const msg of queued.page) {
+      await email.markSending(ctx, msg.messageId);
+      const body =
+        typeof msg.payload === "object" && msg.payload !== null
+          ? (msg.payload as { subject?: string; html?: string })
+          : {};
+      try {
+        const { messageId: providerId } = await sendViaJmap(
+          fetchFn,
+          {
+            to: msg.to,
+            from: msg.from,
+            subject: body.subject,
+            html: body.html ?? "<p></p>",
+          },
+          jmapConfig,
+        );
+        await email.markSent(ctx, msg.messageId, { providerId });
+        outcomes.push({ messageId: msg.messageId, outcome: "sent", providerId });
+      } catch (e) {
+        await email.markFailed(ctx, msg.messageId, { error: String(e) });
+        outcomes.push({ messageId: msg.messageId, outcome: "failed" });
+      }
+    }
+    return outcomes;
+  },
+});
+
+/**
+ * The multi-transport flush: one queue, routed per message by its `transport` tag
+ * (`"smtp"` → the SMTP adapter, `"jmap"` → the JMAP adapter). This is the pattern a
+ * host uses to support both at once — the component stores `transport` per message
+ * exactly so the sender can pick the adapter. Both fakes stand in for the real
+ * host-side senders.
+ */
+export const flushQueuedRouted = mutation({
+  args: { limit: v.optional(v.number()) },
+  returns: v.array(
+    v.object({
+      messageId: v.string(),
+      transport: v.string(),
+      outcome: v.union(v.literal("sent"), v.literal("failed")),
+      providerId: v.optional(v.string()),
+    }),
+  ),
+  handler: async (ctx, { limit }) => {
+    const smtp = fakeSmtpTransport();
+    const jmap = fakeJmapFetch();
+    const queued = await email.listByStatus(ctx, "queued", {
+      cursor: null,
+      numItems: limit ?? 50,
+    });
+    const outcomes: Array<{
+      messageId: string;
+      transport: string;
+      outcome: "sent" | "failed";
+      providerId?: string;
+    }> = [];
+    for (const msg of queued.page) {
+      await email.markSending(ctx, msg.messageId);
+      const body =
+        typeof msg.payload === "object" && msg.payload !== null
+          ? (msg.payload as { subject?: string; html?: string })
+          : {};
+      const message = {
+        to: msg.to,
+        from: msg.from,
+        subject: body.subject,
+        html: body.html ?? "<p></p>",
+      };
+      try {
+        const providerId =
+          msg.transport === "jmap"
+            ? (await sendViaJmap(jmap, message, jmapConfig)).messageId
+            : (await sendViaSmtp(smtp, message)).messageId;
+        await email.markSent(ctx, msg.messageId, { providerId });
+        outcomes.push({
+          messageId: msg.messageId,
+          transport: msg.transport,
+          outcome: "sent",
+          providerId,
+        });
+      } catch (e) {
+        await email.markFailed(ctx, msg.messageId, { error: String(e) });
+        outcomes.push({
+          messageId: msg.messageId,
+          transport: msg.transport,
+          outcome: "failed",
+        });
       }
     }
     return outcomes;

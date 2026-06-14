@@ -20,6 +20,10 @@
       "types": "./dist/smtp/index.d.ts",
       "default": "./dist/smtp/index.js"
     },
+    "./jmap": {
+      "types": "./dist/jmap/index.d.ts",
+      "default": "./dist/jmap/index.js"
+    },
     "./_generated/component.js": {
       "types": "./dist/component/_generated/component.d.ts"
     },
@@ -108,6 +112,7 @@
     "email-queue",
     "transport-agnostic",
     "smtp",
+    "jmap",
     "nodemailer"
   ]
 }

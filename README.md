@@ -6,52 +6,26 @@
 
 # @vllnt/convex-email
 
-A durable, **transport-agnostic** outbound transactional email queue, as a Convex
-component. A host mutation enqueues a message and gets its id back; the host's own
-transport sender claims it and reports the outcome — with retry until the attempt
-budget is spent; clients poll the per-message delivery status
-(`queued → sending → sent | failed`).
+A durable, transport-agnostic outbound transactional email queue, as a Convex component — the host enqueues a message, its own transport sends it, and clients poll the delivery status.
 
-**Provider-neutral.** The transport is a pluggable adapter the **host** configures
-and drives. This component records the *intent* and the *status* — it **never calls
-a mail provider**. Stalwart, Resend, SES, Postmark, an SMTP-relay shim — all are
-*host-configured transports*, picked in config. Domain-neutral too: a game's
-verification email, a SaaS receipt, a blog's transactional newsletter — same queue;
-payload and transport are config.
+```ts
+const email = new Email(components.email);
+await email.enqueue(ctx, messageId, to, from, "smtp", { idempotencyKey });
+await email.markSending(ctx, messageId); // host sends, then:
+await email.markSent(ctx, messageId, { providerId }); // or markFailed → auto-retry
+```
 
 ## Features
 
-- **Enqueue-and-return** — `enqueue(messageId, to, from, transport, opts?)` inserts a `queued` message and hands back its id immediately; the caller never blocks on the send.
-- **Host-driven transport** — the host's sender claims a message (`markSending`), dispatches it through whatever adapter it configured (generic SMTP, JMAP, an HTTP API), and reports the outcome (`markSent` / `markFailed`). The component never reaches a provider; `transport` is just an opaque host string tag.
-- **Optional generic SMTP adapter** — `@vllnt/convex-email/smtp` sends through any SMTP server (Stalwart, Postfix, any provider's relay) from the host's `"use node"` action. `nodemailer` is an *optional* peer dep; the queue core stays dependency-clean. See [Transports](#transports).
-- **Idempotent enqueue** — an `idempotencyKey` makes a re-enqueue return the existing message (`deduplicated: true`) instead of inserting a duplicate, so a retried request or an at-least-once producer can never queue the same email twice. A bare duplicate `messageId` throws `ConvexError({ code: "DUPLICATE_MESSAGE" })`.
-- **Retry with budget** — `markFailed` re-queues the message (`sending → queued`) while `attempts < maxAttempts`, then lands it in terminal `failed`. The component owns the count and the retry-vs-terminal decision; the host owns the backoff timing.
-- **Terminal states are final** — any transition out of `sent`/`failed` is rejected with `ConvexError({ code: "TERMINAL_STATE" })`, so a late or duplicate delivery callback can never overwrite a recorded outcome. `markSent` is idempotent on an already-`sent` message.
-- **Poll or subscribe** — `get(id)` returns the current envelope; `listByStatus(status, paginationOpts)` pages the `queued` backlog to flush, watches `sending`, or audits a terminal history via the standard Convex pagination envelope. In a reactive Convex query these update live.
-- **Server-sourced time** — `createdAt`/`updatedAt` are stamped from the server clock inside every handler; a caller can never supply a timestamp.
-- **Typed, opaque payload** — `Email<TPayload>` types the stored `payload` end to end; pass `payloadValidator` to narrow the opaque value at the boundary (no unchecked cast, no `v.any()` dump). The component stores the rendered body opaquely.
-- **Bounded prune + cron** — a built-in daily prune cron sweeps terminal messages past a retention window in bounded batches and self-reschedules until the tail is clean; idempotent. Queued/sending messages are never pruned.
-- **Mount-safe** — runs correctly under multiple named `app.use` mounts (e.g. a transactional mount and a marketing mount); each instance is an isolated sandbox.
-
-## Architecture
-
-```
-src/
-├── shared.ts              # constants (component name, states, retention, attempts, batch)
-├── test.ts                # convex-test register() helper
-├── client/                # Email class (the public API)
-└── component/             # schema (messages) + mutations + queries + prune cron
-```
-
-Sandboxed table: `messages {messageId, to, from, transport, status, payload?,
-subjectRef?, idempotencyKey?, providerId?, attempts, maxAttempts, error?,
-createdAt, updatedAt}` — indexed for lookup (`by_message_id`), dedup
-(`by_idempotency_key`), status polling (`by_status`), subject-centric listing
-(`by_subject`), and the retention sweep (`by_status_updated`). No host tables are
-touched. A built-in cron (`crons.ts`) prunes terminal messages daily.
-
-**The transport seam.** The real send happens in the host's action; the component
-stays a transport-independent queue/retry/status core.
+- **Enqueue-and-return** — insert a `queued` message, get its id back; the caller never blocks on the send.
+- **Host-driven transport** — the host claims (`markSending`), sends, and reports (`markSent`/`markFailed`); the component never reaches a provider.
+- **Optional generic SMTP adapter** — `@vllnt/convex-email/smtp` sends through any SMTP server; `nodemailer` is an optional peer dep.
+- **Optional generic JMAP adapter** — `@vllnt/convex-email/jmap` sends over any JMAP server's HTTP API (Stalwart, Fastmail, Cyrus) from a plain action — `fetch`-based, no `"use node"`, no extra dep.
+- **Idempotent enqueue** — an `idempotencyKey` dedups a re-enqueue so a retry can't double-send.
+- **Retry with budget** — `markFailed` re-queues until `attempts` hit `maxAttempts`, then lands in terminal `failed`.
+- **Terminal states are final** — a late or duplicate delivery callback can never overwrite a recorded outcome.
+- **Poll or subscribe** — `get` / `listByStatus` update live in a reactive Convex query.
+- **Server-sourced time, typed opaque payload, bounded prune cron, mount-safe.**
 
 ## Installation
 
@@ -59,10 +33,7 @@ stays a transport-independent queue/retry/status core.
 pnpm add @vllnt/convex-email
 ```
 
-Peer dependency: `convex@^1.41.0`. The queue core has **zero third-party runtime
-deps**. `nodemailer@^8.0.4` is an **optional** peer dependency — install it only if
-you use the generic SMTP transport (`@vllnt/convex-email/smtp`); see
-[Transports](#transports).
+Peer dependency: `convex@^1.41.0`. The queue core has zero third-party runtime deps. `nodemailer@^8.0.4` is an optional peer dep — only for the SMTP transport. The JMAP transport (`@vllnt/convex-email/jmap`) is `fetch`-based and needs no extra dependency.
 
 ## Usage
 
@@ -87,7 +58,7 @@ const email = new Email<{ subject: string; html: string }>(components.email, {
   payloadValidator: v.object({ subject: v.string(), html: v.string() }).parse,
 });
 
-// 1) Enqueue the message and schedule the send. The component records intent only.
+// 1) Enqueue (records intent only) and schedule the send.
 export const sendWelcome = mutation({
   args: { userId: v.string(), to: v.string() },
   handler: async (ctx, { userId, to }) => {
@@ -102,7 +73,6 @@ export const sendWelcome = mutation({
 });
 
 // 2) The host's transport sender claims, dispatches, and reports the outcome.
-//    The HTTP call to your mail server lives HERE — never in the component.
 export const flush = internalAction({
   args: { messageId: v.string() },
   handler: async (ctx, { messageId }) => {
@@ -111,155 +81,69 @@ export const flush = internalAction({
       const providerId = await sendOverJmap(messageId); // your transport
       await email.markSent(ctx, messageId, { providerId });
     } catch (e) {
-      const { retried } = await email.markFailed(ctx, messageId, {
-        error: String(e),
-      });
-      if (retried) {
-        await ctx.scheduler.runAfter(backoffMs(), internal.notify.flush, { messageId });
-      }
+      const { retried } = await email.markFailed(ctx, messageId, { error: String(e) });
+      if (retried) await ctx.scheduler.runAfter(backoffMs(), internal.notify.flush, { messageId });
     }
   },
-});
-
-// 3) Clients poll the delivery status (reactively, in a Convex query).
-export const status = query({
-  args: { messageId: v.string() },
-  handler: (ctx, { messageId }) => email.get(ctx, messageId),
 });
 ```
 
 ## API Reference
 
-See [docs/API.md](docs/API.md). Summary:
-
 | Method | Kind | Result |
 |--------|------|--------|
-| `enqueue(ctx, messageId, to, from, transport, opts?)` | mutation | `{ messageId, deduplicated }` (`opts`: `{ payload?; subjectRef?; idempotencyKey?; maxAttempts? }`) |
+| `enqueue(ctx, messageId, to, from, transport, opts?)` | mutation | `{ messageId, deduplicated }` |
 | `markSending(ctx, messageId)` | mutation | `{ attempts }` |
-| `markSent(ctx, messageId, opts?)` | mutation | `null` (`opts`: `{ providerId? }`) |
-| `markFailed(ctx, messageId, opts?)` | mutation | `{ status: "queued" \| "failed"; retried }` (`opts`: `{ error? }`) |
+| `markSent(ctx, messageId, opts?)` | mutation | `null` |
+| `markFailed(ctx, messageId, opts?)` | mutation | `{ status, retried }` |
 | `get(ctx, messageId)` | query | `MessageView \| null` |
 | `listByStatus(ctx, status, paginationOpts)` | query | `PaginationResult<MessageView>` |
-| `prune(ctx, opts?)` | mutation | `number` (terminal messages removed in the first bounded pass) |
+| `prune(ctx, opts?)` | mutation | `number` |
 
-Client options:
-`new Email(component, { payloadValidator?, maxAttempts? })` (`maxAttempts` default 5).
-`prune` opts: `{ before?; batch? }` (defaults `before = Date.now()`, `batch = 200`).
+Full reference: [docs/API.md](docs/API.md).
 
-## Transports
+## SMTP transport (optional)
 
-The queue is **transport-agnostic** — it records intent and status and never
-sends. The actual send is the host's job, and the package ships **one optional,
-generic transport adapter** to make the common case turnkey:
-
-**Generic SMTP** (`@vllnt/convex-email/smtp`) — sends through **any** SMTP server:
-**Stalwart, Postfix, a localhost MTA, or any provider's SMTP relay**. SMTP is the
-protocol; the server is host config. Swap the backing server (Stalwart → SES SMTP →
-Postfix) by changing config alone; no code change.
+A generic SMTP adapter ships at `@vllnt/convex-email/smtp` — it sends through any SMTP server (Stalwart, Postfix, any relay). The real send runs in the host's own `"use node"` action; the component never sends.
 
 ```ts
 import { createSmtpSender } from "@vllnt/convex-email/smtp";
 
-const send = createSmtpSender({
-  host: process.env.SMTP_HOST!, // any SMTP server — Stalwart, Postfix, a relay
-  port: 465,
-  secure: true, // implicit TLS (defaults to true for port 465)
-  auth: { user: process.env.SMTP_USER!, pass: process.env.SMTP_PASS! },
-  from: "no-reply@app.com", // default From when a message omits one
-});
-```
-
-The SMTP send runs in your own `"use node"` action — import `createSmtpSender`
-there; the component itself never sends.
-
-**`nodemailer` is an optional peer dependency**: the queue core installs and runs
-with **zero third-party runtime deps**. Only a host that imports
-`@vllnt/convex-email/smtp` needs `nodemailer`:
-
-```bash
-pnpm add nodemailer   # only if you use the SMTP transport
-```
-
-The adapter is two layers: a **pure, injectable** `sendViaSmtp(transport, message,
-config?)` (driven by an injected transport, runs anywhere) plus a **thin
-`nodemailer` wrapper** (`createSmtpTransport` / `createSmtpSender`), the Node-only
-piece. Bring your own transport — pass any object with `sendMail(opts)` to
-`sendViaSmtp` — to use a different SMTP library or a fake in tests.
-
-### Wiring the queue to SMTP
-
-The host's flush action pages the `queued` backlog, claims each message
-(`markSending`), sends it, and records the outcome (`markSent` with the SMTP
-message id as `providerId`, or `markFailed`). `markFailed` re-queues until the
-attempt budget is spent — the host reschedules with its own backoff:
-
-```ts
-"use node";
-import { internalAction } from "./_generated/server";
-import { createSmtpSender } from "@vllnt/convex-email/smtp";
-import { Email } from "@vllnt/convex-email";
-import { components } from "./_generated/api";
-
-const email = new Email<{ subject: string; html: string }>(components.email);
 const send = createSmtpSender({
   host: process.env.SMTP_HOST!,
   port: 465,
   secure: true,
   auth: { user: process.env.SMTP_USER!, pass: process.env.SMTP_PASS! },
 });
-
-export const flushQueued = internalAction({
-  handler: async (ctx) => {
-    const { page } = await email.listByStatus(ctx, "queued", {
-      cursor: null,
-      numItems: 50,
-    });
-    for (const msg of page) {
-      await email.markSending(ctx, msg.messageId);
-      try {
-        const { messageId } = await send({
-          to: msg.to,
-          from: msg.from,
-          subject: msg.payload?.subject,
-          html: msg.payload?.html,
-        });
-        await email.markSent(ctx, msg.messageId, { providerId: messageId });
-      } catch (e) {
-        await email.markFailed(ctx, msg.messageId, { error: String(e) });
-      }
-    }
-  },
-});
 ```
 
-See `example/convex/` (`flushQueuedOverSmtp`) for the full loop exercised end to
-end against the component runtime with a fake transport.
+Full queue-to-SMTP wiring in [docs/API.md](docs/API.md).
 
-## React
+## JMAP transport (optional)
 
-This component ships **backend-only** — no `./react` entry. Delivery-status
-display is an ordinary reactive `useQuery` over the host's own re-exported `get` /
-`listByStatus` function refs (those return live in Convex), and the message body
-is host-rendered, so a dedicated hook would add a wrapper with no value over the
-host's existing `api`.
+A generic JMAP adapter ships at `@vllnt/convex-email/jmap` — it sends over any JMAP server's HTTP API (Stalwart, Fastmail, Cyrus, Apache James). JMAP is HTTP, so it runs in a **plain Convex action** — no `"use node"`, no `nodemailer`, zero extra deps. It's a protocol, not a vendor: `./jmap`, never `./stalwart`.
 
-## Security Model
+```ts
+import { createJmapSender, discoverJmapSession } from "@vllnt/convex-email/jmap";
 
-The component is **auth-agnostic** and **provider-neutral**: it never
-authenticates, authorizes, or contacts a mail provider. The host resolves
-identity, decides whether a caller may enqueue or transition a message, configures
-and drives the transport, and passes opaque `to`/`from` addresses, a `transport`
-tag, and the rendered `payload`. Component tables are sandboxed — the host reaches
-them only through the exported functions, and the component never reads host or
-sibling tables. The stored `payload` is opaque to the component; it never inspects
-or sends it.
+// Resolve account / identity / Sent mailbox once, then bind a sender over your `fetch`.
+const config = await discoverJmapSession((u, i) => fetch(u, i), {
+  sessionUrl: "https://mail.example.com/.well-known/jmap", // e.g. a Stalwart host
+  token: process.env.JMAP_TOKEN!,
+  from: "no-reply@app.com",
+});
+const send = createJmapSender(config, (u, i) => fetch(u, i));
+```
 
-**Terminal states are final**, so a replayed or duplicate delivery callback can
-never overwrite a recorded outcome. **Idempotent enqueue** (via `idempotencyKey`)
-prevents a double-submit from queuing the same email twice. **Time is
-server-sourced** — `createdAt`/`updatedAt` come from `Date.now()` inside each
-handler, never from the caller. The host may narrow the opaque `payload` with
-`payloadValidator`, applied at the client boundary on both write and read.
+To send some mail over SMTP and some over Stalwart's HTTP (JMAP), keep **one queue** and route per message by its stored `transport` tag (a `senders` map keyed by `"smtp"` / `"jmap"`). Full JMAP wiring + routing in [docs/API.md](docs/API.md).
+
+## Security
+
+- Auth-agnostic and provider-neutral — the host gates access and drives the transport; the component never authenticates or contacts a provider.
+- Tables are sandboxed (reached only via exported functions); the stored `payload` is opaque.
+- Terminal states are final, enqueue is idempotent, and time is server-sourced.
+
+See [docs/API.md](docs/API.md).
 
 ## Testing
 

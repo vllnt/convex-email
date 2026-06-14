@@ -20,6 +20,10 @@ export default defineConfig({
         // trivial pass-through to the Node-only library, consumer-E2E verified
         // (exactly as the `./react` live-backend path is the consuming app's E2E).
         "src/smtp/send.ts",
+        // The generic-JMAP adapter. Pure end to end (an injected `fetch`, no
+        // Node-only piece — JMAP is plain HTTP), so the WHOLE adapter is covered
+        // here at 100% with a fake `fetch`; there is no excluded wrapper.
+        "src/jmap/send.ts",
         "src/component/mutations.ts",
         "src/component/queries.ts",
         "src/component/validators.ts",

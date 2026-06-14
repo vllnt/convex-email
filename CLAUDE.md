@@ -30,6 +30,10 @@ src/
 │   ├── transport.ts       # THIN nodemailer wrapper (createSmtpTransport/Sender) — coverage-EXCLUDED
 │   ├── types.ts           # SmtpConfig/SmtpMessage/SmtpTransport/SmtpSendResult
 │   └── index.ts           # barrel re-export
+├── jmap/                   # OPTIONAL generic-JMAP transport (host-side glue, `./jmap` export)
+│   ├── send.ts            # PURE sendViaJmap / discoverJmapSession / createJmapSender (100% covered, no excluded wrapper)
+│   ├── types.ts           # JmapConfig/JmapMessage/JmapFetch/JmapSendResult
+│   └── index.ts           # barrel re-export
 └── component/
     ├── schema.ts           # sandboxed table: messages {messageId, to, from, transport, status, payload?, attempts, ...}
     ├── convex.config.ts    # defineComponent("email")
@@ -100,6 +104,21 @@ second instance (`app.use(component, { name })`) for a static partition.
   exactly as a `./react` live-backend path is the consuming app's E2E. The host wires it to the queue:
   `listByStatus("queued")` → `markSending` → send → `markSent({ providerId })` / `markFailed`.
 
+- **Optional generic-JMAP transport — provider-neutral, zero-dep, plain action:** a second shipped
+  adapter (`@vllnt/convex-email/jmap`) sends over GENERIC JMAP (RFC 8620/8621) — config `{ endpoint,
+  token, accountId, identityId, mailboxId, from? }`, host-supplied or resolved by `discoverJmapSession`
+  from the JMAP session — and works with Stalwart, Fastmail, Cyrus, ANY JMAP server. JMAP is the
+  protocol; the server is host config, so NO vendor is baked in (the adapter is `./jmap`, never
+  `./stalwart`; swapping the server is a config change). Unlike SMTP it needs NO `"use node"` and NO
+  dependency: JMAP is plain HTTP, so the host's runtime `fetch` (injected) runs in a normal Convex
+  action. Because there is no Node-only piece, the WHOLE adapter (`sendViaJmap` / `discoverJmapSession` /
+  `createJmapSender` / `validateJmapConfig` / `buildEmailCreate` / `buildSubmitRequest` /
+  `parseSubmitResponse`) is pure and IN `coverage.include` at 100% (no excluded wrapper, vs SMTP's
+  excluded `nodemailer` shim); it rejects CR/LF header injection. Send is the two-call JMAP batch
+  (`Email/set` create → `EmailSubmission/set` submit); the host wires it to the queue exactly like SMTP,
+  and can route BOTH transports off one queue by the per-message `transport` tag (see `example/convex`
+  `flushQueuedRouted`).
+
 - **Terminal states are final:** `markSent`/`markFailed`/`markSending` reject any transition out of a
   terminal `sent`/`failed` with `ConvexError({ code: "TERMINAL_STATE" })`. A late or duplicate delivery
   callback — common with at-least-once webhooks — can never overwrite a recorded outcome. `markSent` is
@@ -141,10 +160,12 @@ second instance (`app.use(component, { name })`) for a static partition.
 - Host data via typed generics / host validators — never `v.any()` dumps; `jsonValue` is the documented
   last resort for the stored opaque `payload`.
 - No hardcoded provider/vendor anywhere — the transport is a host-supplied string tag + host-driven send;
-  the optional SMTP adapter is generic over any SMTP server (host config), no vendor in the name or code.
+  the optional SMTP and JMAP adapters are generic over any SMTP / any JMAP server (host config), no vendor
+  in the name or code.
 - 100% test coverage is BLOCKING (`vitest.config.mts` thresholds: statements, branches, functions, lines).
   The thin real-`nodemailer` wrapper (`src/smtp/transport.ts`) is deliberately OUT of `coverage.include`
-  (consumer-E2E verified); the pure `src/smtp/send.ts` IS in it at 100%.
+  (consumer-E2E verified); the pure `src/smtp/send.ts` IS in it at 100%. The JMAP adapter has no Node-only
+  piece (`fetch`-based), so `src/jmap/send.ts` is fully IN `coverage.include` at 100%.
 - Runtime deps: only official `@convex-dev/*` + `@vllnt/*` (zero in the queue core). `nodemailer` is an
   OPTIONAL peer dep for the SMTP transport only — never a hard runtime dependency.
 
@@ -159,6 +180,7 @@ second instance (`app.use(component, { name })`) for a static partition.
 | `peerDependencies.convex` version | `llms.txt` context line (`convex@^X.Y.Z`), `docs/API.md` Compatibility line, README Installation peer note |
 | `peerDependencies.nodemailer` floor (optional SMTP peer) | `docs/API.md` Compatibility + SMTP section, `llms.txt` context, README Installation + Transports, CHANGELOG |
 | SMTP transport API (`sendViaSmtp` / `validateSmtpConfig` / `toMailOptions` / `createSmtpSender` / `SmtpConfig` / `SmtpMessage`) | README Transports, `docs/API.md` SMTP section, `scripts/generate-llms.mjs` source list, regenerate `llms-full.txt` |
+| JMAP transport API (`sendViaJmap` / `discoverJmapSession` / `createJmapSender` / `JmapConfig` / `JmapMessage`) | README Transports, `docs/API.md` JMAP section, `vitest.config.mts` `coverage.include`, `scripts/generate-llms.mjs` source list, regenerate `llms-full.txt` |
 | `coverage.include` (a new covered source file) | `vitest.config.mts` include list; a new file without a test fails CI |
 | Lifecycle / state machine | `docs/API.md` mutation sections, Key design decisions above |
 | Any change | `pnpm generate:llms` to keep `llms-full.txt` current |

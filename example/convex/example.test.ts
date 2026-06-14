@@ -662,6 +662,87 @@ describe("email — queue → SMTP send wiring (flushQueuedOverSmtp)", () => {
   });
 });
 
+describe("email — queue → JMAP send wiring (flushQueuedOverJmap)", () => {
+  test("flushes queued messages over the (fake) JMAP fetch and records the outcome", async () => {
+    const t = setup();
+    await t.mutation(api.example.enqueue, {
+      messageId: "j_ok",
+      to: "user@x.com",
+      from: "no-reply@app.com",
+      transport: "jmap",
+      payload: { subject: "Hi", html: "<p>Welcome</p>" },
+    });
+    await t.mutation(api.example.enqueue, {
+      messageId: "j_bad",
+      to: "bounce@x.com",
+      from: "no-reply@app.com",
+      transport: "jmap",
+    });
+
+    const outcomes = await t.mutation(api.example.flushQueuedOverJmap, {});
+    expect(outcomes).toContainEqual({
+      messageId: "j_ok",
+      outcome: "sent",
+      providerId: "jmap-user@x.com",
+    });
+    expect(outcomes).toContainEqual({ messageId: "j_bad", outcome: "failed" });
+
+    const sent = await t.query(api.example.get, { messageId: "j_ok" });
+    expect(sent?.status).toBe("sent");
+    expect(sent?.providerId).toBe("jmap-user@x.com");
+
+    // the bounce re-queued (attempts remain under the default budget of 5)
+    const bounced = await t.query(api.example.get, { messageId: "j_bad" });
+    expect(bounced?.status).toBe("queued");
+    expect(bounced?.attempts).toBe(1);
+    expect(bounced?.error).toMatch(/HTTP 550/);
+  });
+
+  test("flush on an empty queue is a no-op", async () => {
+    const t = setup();
+    expect(await t.mutation(api.example.flushQueuedOverJmap, {})).toEqual([]);
+  });
+});
+
+describe("email — multi-transport routing (flushQueuedRouted)", () => {
+  test("routes each queued message to the adapter named by its transport tag", async () => {
+    const t = setup();
+    await t.mutation(api.example.enqueue, {
+      messageId: "r_smtp",
+      to: "user@x.com",
+      from: "no-reply@app.com",
+      transport: "smtp",
+      payload: { subject: "S", html: "<p>via smtp</p>" },
+    });
+    await t.mutation(api.example.enqueue, {
+      messageId: "r_jmap",
+      to: "user2@x.com",
+      from: "no-reply@app.com",
+      transport: "jmap",
+      payload: { subject: "J", html: "<p>via jmap</p>" },
+    });
+
+    const outcomes = await t.mutation(api.example.flushQueuedRouted, {});
+    expect(outcomes).toContainEqual({
+      messageId: "r_smtp",
+      transport: "smtp",
+      outcome: "sent",
+      providerId: "<smtp-user@x.com>",
+    });
+    expect(outcomes).toContainEqual({
+      messageId: "r_jmap",
+      transport: "jmap",
+      outcome: "sent",
+      providerId: "jmap-user2@x.com",
+    });
+
+    const smtpMsg = await t.query(api.example.get, { messageId: "r_smtp" });
+    expect(smtpMsg?.providerId).toBe("<smtp-user@x.com>");
+    const jmapMsg = await t.query(api.example.get, { messageId: "r_jmap" });
+    expect(jmapMsg?.providerId).toBe("jmap-user2@x.com");
+  });
+});
+
 describe("email — host/component table isolation", () => {
   test("a host note lives in the host table, separate from the component", async () => {
     const t = setup();
