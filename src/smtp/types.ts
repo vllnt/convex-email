@@ -1,21 +1,15 @@
 /**
  * Public TypeScript surface for the optional generic-SMTP transport adapter.
  *
- * This adapter is **host-side glue**, not part of the sandboxed component. A
- * Convex component runs in the V8 runtime and cannot open a raw SMTP socket (and
- * cannot ship a `"use node"` action — the Node runtime is host-only); SMTP is a
- * socket protocol `fetch()` cannot speak. So the real send runs in the **host's**
- * own `"use node"` action, which imports this module. The component stays a pure
- * queue/retry/status core that never contacts a provider — the SMTP server is
- * host config, never baked in, so this stays `convex-email`, never
- * `convex-stalwart`.
+ * Import this from your own `"use node"` action to send queued messages over any
+ * SMTP server. The component itself never sends — it records the message and its
+ * status; the SMTP server is host config.
  */
 
 /**
- * Generic SMTP connection config — works with Stalwart, Postfix, any SMTP server.
- * Host-supplied; no vendor is hardcoded. Mirrors the subset of nodemailer's
- * transport options this adapter drives, kept vendor-neutral and dependency-free
- * so it is valid wherever the host imports it.
+ * Generic SMTP connection config — works with Stalwart, Postfix, or any SMTP
+ * server. Host-supplied; mirrors the subset of nodemailer's transport options
+ * this adapter drives.
  */
 export interface SmtpConfig {
   /** SMTP server hostname (e.g. `"smtp.example.com"`, a Stalwart host, a Postfix relay). */

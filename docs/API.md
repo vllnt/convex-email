@@ -133,13 +133,11 @@ scheduler with an explicit `before` cutoff. The cron is per-mount, so each
 ## SMTP transport (optional) — `@vllnt/convex-email/smtp`
 
 A separate, optional export that actually sends a queued message over **generic
-SMTP** (Stalwart, Postfix, any server). It is **host-side glue**, not part of the
-sandboxed component: a Convex component runs in the V8 runtime and cannot ship a
-`"use node"` action, and SMTP is a raw-socket protocol `fetch()` cannot speak, so
-the real send runs in the **host's own `"use node"` action**, which imports this
-module. The SMTP server is host config — no vendor is baked in. `nodemailer` is an
-**optional peer dependency** (`^8.0.4`); importing this entry is the opt-in, and a
-backend-only consumer (importing only `@vllnt/convex-email`) pulls zero SMTP code.
+SMTP** (Stalwart, Postfix, any server). The real send runs in the **host's own
+`"use node"` action**, which imports this module; the component itself never sends.
+The SMTP server is host config. `nodemailer` is an **optional peer dependency**
+(`^8.0.4`); importing this entry is the opt-in, and a backend-only consumer
+(importing only `@vllnt/convex-email`) pulls zero SMTP code.
 
 > The pinned floor `nodemailer@^8.0.4` is the first release fixing the
 > `envelope.size` CRLF SMTP-command-injection advisory (GHSA-c7w3-x93f-qmm8 /
@@ -193,14 +191,13 @@ message. No I/O.
 Send one message through an **injected** `SmtpTransport` and normalize the result.
 Validates the message first (`toMailOptions`), then calls `transport.sendMail`.
 Throws when the transport throws (the host catches it and calls `markFailed`).
-Pass a real `nodemailer` transport in production, or a fake in a unit test — this
-is the 100%-covered core, network-free.
+Pass a real `nodemailer` transport in production, or a fake in a unit test —
+network-free.
 
 ### `createSmtpTransport(config) → SmtpTransport` (Node only)
 
 Build a real `nodemailer` transport from a `SmtpConfig` (validated first). The thin
-`nodemailer.createTransport` wrapper — the only Node-runtime piece. Excluded from
-the coverage gate (consumer-E2E verified); call it from a `"use node"` action.
+`nodemailer.createTransport` wrapper; call it from a `"use node"` action.
 
 ### `createSmtpSender(config) → (message: SmtpMessage) => Promise<SmtpSendResult>` (Node only)
 

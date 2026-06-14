@@ -6,39 +6,15 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
-## [0.2.0] - 2026-06-14
-
-### Added
-
-- **Optional generic SMTP transport** (`@vllnt/convex-email/smtp`) — sends a queued
-  message over **any** SMTP server (Stalwart, Postfix, any provider's relay). The
-  server is host config; no vendor is baked in, so the package stays `convex-email`.
-  - `sendViaSmtp(transport, message, config?)` — the **pure, injectable** send core
-    (driven by an injected `SmtpTransport`; unit-tested to 100% with no network),
-    plus `validateSmtpConfig` and `toMailOptions`. The validators reject CR/LF
-    (SMTP header) injection in every address, subject, and header value.
-  - `createSmtpTransport(config)` / `createSmtpSender(config)` — the **thin
-    `nodemailer` wrapper**, the only Node-runtime piece, called from the host's own
-    `"use node"` action. A Convex component runs in V8 and cannot ship a `"use node"`
-    action, so the real SMTP send is host-side glue, not in the sandboxed component.
-  - `example/convex/` gains `flushQueuedOverSmtp` — the queue→send wiring
-    (`listByStatus("queued")` → `markSending` → send → `markSent`/`markFailed`)
-    exercised end to end against the component runtime with a fake transport.
-- `nodemailer` is an **optional peer dependency** (`^8.0.4` — the floor that fixes
-  the `envelope.size` CRLF injection advisory GHSA-c7w3-x93f-qmm8 / CVE-2025-14874).
-  The queue core still installs and runs with **zero third-party runtime deps**; only
-  a host importing `@vllnt/convex-email/smtp` pulls `nodemailer`.
-
 ## [0.1.0] - 2026-06-14
 
 ### Added
 
 - First release of `@vllnt/convex-email` — a durable, transport-agnostic outbound
   transactional email queue.
-- Provider-neutral by mandate: the transport is a host-configured, host-driven
-  adapter (`transport` is an opaque string tag). The component records send intent
-  and per-message status and **never calls a mail provider** — no vendor is baked
-  in.
+- Provider-neutral: the transport is a host-configured, host-driven adapter
+  (`transport` is an opaque string tag). The component records send intent and
+  per-message status and **never calls a mail provider**.
 - `enqueue(messageId, to, from, transport, opts?)` records a message in `queued`
   and returns its id immediately; `messageId` is host-supplied and must be unique.
   An `idempotencyKey` dedups a re-enqueue (`deduplicated: true`) so a retry never
@@ -63,3 +39,19 @@ All notable changes to this project are documented here. The format is based on
   cron (`crons.ts`); idempotent. Default retention 30 days.
 - Mount-safe: correct under multiple `app.use(component, { name })` mounts — each
   instance is sandboxed, the cron is registered per instance.
+- **Optional generic SMTP transport** (`@vllnt/convex-email/smtp`) — sends a queued
+  message over **any** SMTP server (Stalwart, Postfix, any provider's relay). The
+  server is host config.
+  - `sendViaSmtp(transport, message, config?)` — the **pure, injectable** send core
+    (driven by an injected `SmtpTransport`), plus `validateSmtpConfig` and
+    `toMailOptions`. The validators reject CR/LF (SMTP header) injection in every
+    address, subject, and header value.
+  - `createSmtpTransport(config)` / `createSmtpSender(config)` — the **thin
+    `nodemailer` wrapper**, called from the host's own `"use node"` action.
+  - `example/convex/` includes `flushQueuedOverSmtp` — the queue→send wiring
+    (`listByStatus("queued")` → `markSending` → send → `markSent`/`markFailed`)
+    exercised end to end against the component runtime with a fake transport.
+- `nodemailer` is an **optional peer dependency** (`^8.0.4` — the floor that fixes
+  the `envelope.size` CRLF injection advisory GHSA-c7w3-x93f-qmm8 / CVE-2025-14874).
+  The queue core still installs and runs with **zero third-party runtime deps**; only
+  a host importing `@vllnt/convex-email/smtp` pulls `nodemailer`.

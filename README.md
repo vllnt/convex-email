@@ -12,13 +12,12 @@ transport sender claims it and reports the outcome — with retry until the atte
 budget is spent; clients poll the per-message delivery status
 (`queued → sending → sent | failed`).
 
-**Provider-neutral by mandate.** The transport is a pluggable adapter the **host**
-configures and drives. This component records the *intent* and the *status* — it
-**never calls a mail provider**. Stalwart, Resend, SES, Postmark, an SMTP-relay
-shim — all are *host-configured transports*, never baked in. That is why this is
-`convex-email`, not `convex-stalwart`: swapping the backing vendor never forces a
-rename. Domain-neutral too: a game's verification email, a SaaS receipt, a blog's
-transactional newsletter — same queue; payload and transport are config.
+**Provider-neutral.** The transport is a pluggable adapter the **host** configures
+and drives. This component records the *intent* and the *status* — it **never calls
+a mail provider**. Stalwart, Resend, SES, Postmark, an SMTP-relay shim — all are
+*host-configured transports*, picked in config. Domain-neutral too: a game's
+verification email, a SaaS receipt, a blog's transactional newsletter — same queue;
+payload and transport are config.
 
 ## Features
 
@@ -51,13 +50,8 @@ createdAt, updatedAt}` — indexed for lookup (`by_message_id`), dedup
 (`by_subject`), and the retention sweep (`by_status_updated`). No host tables are
 touched. A built-in cron (`crons.ts`) prunes terminal messages daily.
 
-**The transport seam.** The Convex runtime has `fetch()` but no raw SMTP socket,
-so any real adapter reaches a mail server over HTTP (JMAP for Stalwart / any JMAP
-server, a vendor HTTP API for SES / Postmark / Mailgun, or an HTTP→SMTP relay
-shim). That adapter lives in the **host**, not in this component — the component
-stays a transport-independent queue/retry/status core. This component replaces a
-provider's *API + event model*, not its deliverability/IP reputation (warmup,
-blocklists, DMARC alignment) — those are mail-server and infra concerns.
+**The transport seam.** The real send happens in the host's action; the component
+stays a transport-independent queue/retry/status core.
 
 ## Installation
 
@@ -160,9 +154,8 @@ generic transport adapter** to make the common case turnkey:
 
 **Generic SMTP** (`@vllnt/convex-email/smtp`) — sends through **any** SMTP server:
 **Stalwart, Postfix, a localhost MTA, or any provider's SMTP relay**. SMTP is the
-protocol; the server is host config — there is no vendor baked in, so the package
-stays `convex-email`, never `convex-stalwart`. Swap the backing server (Stalwart →
-SES SMTP → Postfix) by changing config alone; no rename, no code change.
+protocol; the server is host config. Swap the backing server (Stalwart → SES SMTP →
+Postfix) by changing config alone; no code change.
 
 ```ts
 import { createSmtpSender } from "@vllnt/convex-email/smtp";
@@ -176,29 +169,22 @@ const send = createSmtpSender({
 });
 ```
 
-**Why it lives host-side (a `"use node"` action), not in the component.** A Convex
-component runs in the **V8 runtime** and **cannot ship a `"use node"` action** — the
-Node runtime is host-only. SMTP is a raw-socket protocol that `fetch()` cannot
-speak (which is exactly why it needs Node). So the real `nodemailer` send runs in
-**your** `"use node"` action; the sandboxed component stays a pure
-queue/retry/status core. (The official `@convex-dev/resend` component sends over
-Resend's *HTTP* API with `fetch()` for the same reason — no Node in a component.)
+The SMTP send runs in your own `"use node"` action — import `createSmtpSender`
+there; the component itself never sends.
 
-**`nodemailer` is an optional peer dependency** (exactly like `react` for a
-front-tooling layer): the queue core installs and runs with **zero third-party
-runtime deps**. Only a host that imports `@vllnt/convex-email/smtp` needs
-`nodemailer`:
+**`nodemailer` is an optional peer dependency**: the queue core installs and runs
+with **zero third-party runtime deps**. Only a host that imports
+`@vllnt/convex-email/smtp` needs `nodemailer`:
 
 ```bash
 pnpm add nodemailer   # only if you use the SMTP transport
 ```
 
 The adapter is two layers: a **pure, injectable** `sendViaSmtp(transport, message,
-config?)` (driven by an injected transport — unit-tested to 100% with no network,
-runs anywhere) plus a **thin `nodemailer` wrapper** (`createSmtpTransport` /
-`createSmtpSender`) that is the only Node-only piece (consumer-E2E verified). Bring
-your own transport — pass any object with `sendMail(opts)` to `sendViaSmtp` — to
-use a different SMTP library or a fake in tests.
+config?)` (driven by an injected transport, runs anywhere) plus a **thin
+`nodemailer` wrapper** (`createSmtpTransport` / `createSmtpSender`), the Node-only
+piece. Bring your own transport — pass any object with `sendMail(opts)` to
+`sendViaSmtp` — to use a different SMTP library or a fake in tests.
 
 ### Wiring the queue to SMTP
 
@@ -255,8 +241,7 @@ This component ships **backend-only** — no `./react` entry. Delivery-status
 display is an ordinary reactive `useQuery` over the host's own re-exported `get` /
 `listByStatus` function refs (those return live in Convex), and the message body
 is host-rendered, so a dedicated hook would add a wrapper with no value over the
-host's existing `api`. If a future consumer needs a shared management surface the
-analysis will be re-run (per the Component Standard's front-end tooling decision).
+host's existing `api`.
 
 ## Security Model
 

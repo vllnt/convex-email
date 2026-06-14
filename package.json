@@ -1,6 +1,6 @@
 {
   "name": "@vllnt/convex-email",
-  "version": "0.2.0",
+  "version": "0.1.0",
   "description": "Durable, transport-agnostic outbound transactional email queue — enqueue, retry, idempotent send, and per-message delivery status as a Convex component",
   "license": "MIT",
   "type": "module",
