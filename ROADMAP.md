@@ -11,7 +11,7 @@
 > **private** and pinned at **`0.1.0`**; new features (including the JMAP transport
 > below) land **in `0.1.0`** with no version bump, and `publish.yml` stays disabled.
 > The public canary/release path is gated by the hub's `fleet-dogfood` /
-> `fleet-publish` phases. See the hub `.claude/rules/component-standard.md` ›
+> `fleet-publish` phases. See the hub `AGENTS.md` ›
 > *Visibility + version hold*.
 
 ## transactional-queue [DONE 2026-06]
@@ -53,7 +53,7 @@ AGENTS updated; stays in `0.1.0` (no version bump; publish gated by the fleet ho
 - [x] jmap-transport.2 Add JMAP session discovery (`/.well-known/jmap` → `accountId` + `Identity/get` `identityId` + `Mailbox/get` drafts mailbox) or accept them via `JmapConfig`; resolve once per sender
 - [x] jmap-transport.3 Ship the `./jmap` subpath export — zero runtime deps, native `fetch`, runs in a plain action (no `"use node"`); add the `package.json` exports entry, dist build, and `vitest` `coverage.include`
 - [x] jmap-transport.4 Route per-transport in the `example/convex` flush (`smtp` vs `jmap` by `msg.transport`) and exercise the JMAP path end-to-end at 100% E2E against the component runtime with a fake `fetch`
-- [x] jmap-transport.5 Docs sync — README Transports (generic JMAP: any JMAP server, config `{ endpoint, token }`, plain-action note), `docs/API.md` JMAP section, CLAUDE.md/AGENTS Key design decision, regenerate `llms-full.txt`
+- [x] jmap-transport.5 Docs sync — README Transports (generic JMAP: any JMAP server, config `{ endpoint, token }`, plain-action note), `docs/API.md` JMAP section, AGENTS.md/AGENTS Key design decision, regenerate `llms-full.txt`
 
 ## Later
 

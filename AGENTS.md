@@ -14,7 +14,12 @@ A durable, transport-agnostic outbound transactional email queue, as a Convex co
 mutation enqueues a message and gets its id back; the host's own transport sender claims it and reports
 the outcome, with retry until the attempt budget is spent; clients poll the per-message delivery status
 (`queued → sending → sent | failed`). It follows the vllnt Component Standard (see the
-`convex-components` hub `.claude/rules/component-standard.md`).
+`oss-packages` hub `AGENTS.md`).
+
+## Agent instructions
+
+`AGENTS.md` is the sole agent-instruction source for this repository. Do not add
+`CLAUDE.md` or `.claude` content.
 
 ## Architecture
 
@@ -186,3 +191,9 @@ second instance (`app.use(component, { name })`) for a static partition.
 | Any change | `pnpm generate:llms` to keep `llms-full.txt` current |
 
 Grep old values before committing (e.g. after a `peerDependencies.convex` bump, `git grep "1.41.0"` → only the new range survives).
+
+## Generated code
+
+- Every `**/_generated/**` file is owned exclusively by Convex CLI codegen.
+- Never create, edit, lint, or format generated files manually.
+- Run `pnpm codegen` to regenerate them and commit the generated output unchanged.
