@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- Require `convex@^1.45.0` and update `convex-test` to `^0.0.56`.
+
 ### Added
 
 - **Optional generic JMAP transport** (`@vllnt/convex-email/jmap`) — sends a queued

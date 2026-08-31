@@ -114,7 +114,7 @@ export const markSending = mutation({
     }
 
     const attempts = msg.attempts + 1;
-    await ctx.db.patch(msg._id, {
+    await ctx.db.patch("messages", msg._id, {
       status: "sending",
       attempts,
       updatedAt: Date.now(),
@@ -158,7 +158,7 @@ export const markSent = mutation({
       });
     }
 
-    await ctx.db.patch(msg._id, {
+    await ctx.db.patch("messages", msg._id, {
       status: "sent",
       providerId: args.providerId,
       error: undefined,
@@ -203,7 +203,7 @@ export const markFailed = mutation({
 
     const retried = msg.attempts < msg.maxAttempts;
     const status = retried ? ("queued" as const) : ("failed" as const);
-    await ctx.db.patch(msg._id, {
+    await ctx.db.patch("messages", msg._id, {
       status,
       error: args.error,
       updatedAt: Date.now(),
@@ -247,7 +247,7 @@ export const prune = mutation({
         : [];
 
     for (const row of [...sent, ...failed]) {
-      await ctx.db.delete(row._id);
+      await ctx.db.delete("messages", row._id);
     }
     const removed = sent.length + failed.length;
 

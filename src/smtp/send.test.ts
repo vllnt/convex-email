@@ -56,7 +56,9 @@ describe("validateSmtpConfig", () => {
 
   test("rejects an out-of-range, non-integer, or non-number port", () => {
     expect(() => validateSmtpConfig({ host: "h", port: 0 })).toThrow(/port/);
-    expect(() => validateSmtpConfig({ host: "h", port: 70000 })).toThrow(/port/);
+    expect(() => validateSmtpConfig({ host: "h", port: 70000 })).toThrow(
+      /port/,
+    );
     expect(() => validateSmtpConfig({ host: "h", port: 5.5 })).toThrow(/port/);
     expect(() =>
       validateSmtpConfig({ host: "h", port: "25" as unknown as number }),
@@ -107,7 +109,10 @@ describe("toMailOptions", () => {
   });
 
   test("falls back to config.from when the message omits from", () => {
-    const opts = toMailOptions({ to: "to@x.com", text: "t" }, { from: "cfg@x.com" });
+    const opts = toMailOptions(
+      { to: "to@x.com", text: "t" },
+      { from: "cfg@x.com" },
+    );
     expect(opts.from).toBe("cfg@x.com");
   });
 
@@ -119,21 +124,24 @@ describe("toMailOptions", () => {
   });
 
   test("rejects a missing from (neither message nor config supplies one)", () => {
-    expect(() => toMailOptions({ to: "to@x.com", text: "t" }, {})).toThrow(/`from`/);
+    expect(() => toMailOptions({ to: "to@x.com", text: "t" }, {})).toThrow(
+      /`from`/,
+    );
     expect(() =>
       toMailOptions({ to: "to@x.com", from: "  ", text: "t" }, {}),
     ).toThrow(/`from`/);
   });
 
   test("rejects a body with neither text nor html", () => {
-    expect(() => toMailOptions({ to: "to@x.com", from: "f@x.com" }, {})).toThrow(
-      /text.*html/,
-    );
+    expect(() =>
+      toMailOptions({ to: "to@x.com", from: "f@x.com" }, {}),
+    ).toThrow(/text.*html/);
   });
 
   test("accepts an html-only and a text-only body", () => {
     expect(
-      toMailOptions({ to: "t@x.com", from: "f@x.com", html: "<p>x</p>" }, {}).html,
+      toMailOptions({ to: "t@x.com", from: "f@x.com", html: "<p>x</p>" }, {})
+        .html,
     ).toBe("<p>x</p>");
     expect(
       toMailOptions({ to: "t@x.com", from: "f@x.com", text: "x" }, {}).text,
@@ -142,15 +150,15 @@ describe("toMailOptions", () => {
 
   test("rejects CRLF injection in to, from, replyTo, subject, and headers", () => {
     const base = { to: "t@x.com", from: "f@x.com", text: "x" };
-    expect(() => toMailOptions({ ...base, to: "t@x.com\r\nBCC: e" }, {})).toThrow(
-      /`to`/,
+    expect(() =>
+      toMailOptions({ ...base, to: "t@x.com\r\nBCC: e" }, {}),
+    ).toThrow(/`to`/);
+    expect(() => toMailOptions({ ...base, from: "f@x.com\nDATA" }, {})).toThrow(
+      /`from`/,
     );
-    expect(() =>
-      toMailOptions({ ...base, from: "f@x.com\nDATA" }, {}),
-    ).toThrow(/`from`/);
-    expect(() =>
-      toMailOptions({ ...base, replyTo: "r@x.com\rX" }, {}),
-    ).toThrow(/`replyTo`/);
+    expect(() => toMailOptions({ ...base, replyTo: "r@x.com\rX" }, {})).toThrow(
+      /`replyTo`/,
+    );
     expect(() =>
       toMailOptions({ ...base, subject: "Hi\r\nInjected" }, {}),
     ).toThrow(/`subject`/);
@@ -163,7 +171,10 @@ describe("toMailOptions", () => {
   });
 
   test("accepts a clean message with optional fields omitted", () => {
-    const opts = toMailOptions({ to: "t@x.com", from: "f@x.com", text: "x" }, {});
+    const opts = toMailOptions(
+      { to: "t@x.com", from: "f@x.com", text: "x" },
+      {},
+    );
     expect(opts.subject).toBeUndefined();
     expect(opts.replyTo).toBeUndefined();
     expect(opts.headers).toBeUndefined();
@@ -188,8 +199,10 @@ describe("sendViaSmtp (injected transport)", () => {
       rejected: [],
     });
     expect(calls).toHaveLength(1);
-    expect(calls[0].from).toBe("no-reply@app.com");
-    expect(calls[0].to).toBe("to@x.com");
+    const [call] = calls;
+    if (call === undefined) throw new Error("Expected one SMTP request");
+    expect(call.from).toBe("no-reply@app.com");
+    expect(call.to).toBe("to@x.com");
   });
 
   test("flattens object-form accepted/rejected address entries", async () => {
@@ -198,27 +211,35 @@ describe("sendViaSmtp (injected transport)", () => {
       accepted: [{ address: "ok@x.com" }, "two@x.com"],
       rejected: [{ address: "no@x.com" }],
     });
-    const result = await sendViaSmtp(
-      transport,
-      { to: "ok@x.com", from: "f@x.com", text: "x" },
-    );
+    const result = await sendViaSmtp(transport, {
+      to: "ok@x.com",
+      from: "f@x.com",
+      text: "x",
+    });
     expect(result.accepted).toEqual(["ok@x.com", "two@x.com"]);
     expect(result.rejected).toEqual(["no@x.com"]);
   });
 
   test("defaults messageId to '' and accepted/rejected to [] when absent", async () => {
     const { transport } = fakeTransport({});
-    const result = await sendViaSmtp(
-      transport,
-      { to: "t@x.com", from: "f@x.com", text: "x" },
-    );
+    const result = await sendViaSmtp(transport, {
+      to: "t@x.com",
+      from: "f@x.com",
+      text: "x",
+    });
     expect(result).toEqual({ messageId: "", accepted: [], rejected: [] });
   });
 
   test("uses the default empty config when none is passed", async () => {
     const { transport, calls } = fakeTransport({ messageId: "x" });
-    await sendViaSmtp(transport, { to: "t@x.com", from: "msg@x.com", text: "x" });
-    expect(calls[0].from).toBe("msg@x.com");
+    await sendViaSmtp(transport, {
+      to: "t@x.com",
+      from: "msg@x.com",
+      text: "x",
+    });
+    const [call] = calls;
+    if (call === undefined) throw new Error("Expected one SMTP request");
+    expect(call.from).toBe("msg@x.com");
   });
 
   test("propagates a transport send failure to the caller", async () => {
