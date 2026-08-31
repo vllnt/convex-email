@@ -40,6 +40,13 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         { deduplicated: boolean; messageId: string },
         Name
       >;
+      markFailed: FunctionReference<
+        "mutation",
+        "internal",
+        { error?: string; messageId: string },
+        { retried: boolean; status: "queued" | "failed" },
+        Name
+      >;
       markSending: FunctionReference<
         "mutation",
         "internal",
@@ -52,13 +59,6 @@ export type ComponentApi<Name extends string | undefined = string | undefined> =
         "internal",
         { messageId: string; providerId?: string },
         null,
-        Name
-      >;
-      markFailed: FunctionReference<
-        "mutation",
-        "internal",
-        { error?: string; messageId: string },
-        { retried: boolean; status: "queued" | "failed" },
         Name
       >;
       prune: FunctionReference<
