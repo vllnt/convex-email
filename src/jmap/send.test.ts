@@ -8,7 +8,12 @@ import {
   sendViaJmap,
   validateJmapConfig,
 } from "./send.js";
-import type { JmapConfig, JmapFetch, JmapRequestInit, JmapResponse } from "./types.js";
+import type {
+  JmapConfig,
+  JmapFetch,
+  JmapRequestInit,
+  JmapResponse,
+} from "./types.js";
 
 const CONFIG: JmapConfig = {
   endpoint: "https://mail.example.com/jmap",
@@ -19,7 +24,10 @@ const CONFIG: JmapConfig = {
 };
 
 /** A canned JMAP HTTP response. */
-function res(body: unknown, init?: { ok?: boolean; status?: number }): JmapResponse {
+function res(
+  body: unknown,
+  init?: { ok?: boolean; status?: number },
+): JmapResponse {
   return {
     ok: init?.ok ?? true,
     status: init?.status ?? 200,
@@ -38,7 +46,9 @@ function queueFetch(responses: JmapResponse[]): {
     calls.push({ url, init });
     const next = responses[i];
     i += 1;
-    return Promise.resolve(next);
+    return next === undefined
+      ? Promise.reject(new Error("No queued JMAP response"))
+      : Promise.resolve(next);
   };
   return { fetchFn, calls };
 }
@@ -84,6 +94,8 @@ describe("validateJmapConfig", () => {
 });
 
 describe("buildEmailCreate", () => {
+  const BUILD_CONFIG = { mailboxId: "mb1" };
+
   test("builds a multipart/alternative body when text and html are both set", () => {
     const { email, envelope } = buildEmailCreate(
       {
@@ -118,7 +130,7 @@ describe("buildEmailCreate", () => {
   test("builds an html-only body and omits subject/replyTo/headers when absent", () => {
     const { email } = buildEmailCreate(
       { to: "to@x.com", from: "f@x.com", html: "<p>h</p>" },
-      {},
+      BUILD_CONFIG,
     );
     expect((email.bodyStructure as { type: string }).type).toBe("text/html");
     expect(email.bodyValues).toEqual({ html: { value: "<p>h</p>" } });
@@ -130,7 +142,7 @@ describe("buildEmailCreate", () => {
   test("builds a text-only body", () => {
     const { email } = buildEmailCreate(
       { to: "to@x.com", from: "f@x.com", text: "plain" },
-      {},
+      BUILD_CONFIG,
     );
     expect((email.bodyStructure as { type: string }).type).toBe("text/plain");
     expect(email.bodyValues).toEqual({ text: { value: "plain" } });
@@ -139,7 +151,7 @@ describe("buildEmailCreate", () => {
   test("falls back to config.from and splits a comma-separated recipient list", () => {
     const { email, envelope } = buildEmailCreate(
       { to: "a@x.com, b@x.com ,c@x.com", text: "x" },
-      { from: "cfg@x.com" },
+      { ...BUILD_CONFIG, from: "cfg@x.com" },
     );
     expect(email.from).toEqual([{ email: "cfg@x.com" }]);
     expect(email.to).toEqual([
@@ -151,52 +163,63 @@ describe("buildEmailCreate", () => {
   });
 
   test("rejects an empty or non-string `to`", () => {
-    expect(() => buildEmailCreate({ to: "", text: "x" }, { from: "f@x.com" })).toThrow(
-      /`to`/,
-    );
     expect(() =>
-      buildEmailCreate({ to: 5 as unknown as string, text: "x" }, { from: "f@x.com" }),
+      buildEmailCreate(
+        { to: "", text: "x" },
+        { ...BUILD_CONFIG, from: "f@x.com" },
+      ),
+    ).toThrow(/`to`/);
+    expect(() =>
+      buildEmailCreate(
+        { to: 5 as unknown as string, text: "x" },
+        { ...BUILD_CONFIG, from: "f@x.com" },
+      ),
     ).toThrow(/`to`/);
   });
 
   test("rejects a missing from (neither message nor config)", () => {
-    expect(() => buildEmailCreate({ to: "t@x.com", text: "x" }, {})).toThrow(/`from`/);
     expect(() =>
-      buildEmailCreate({ to: "t@x.com", from: "  ", text: "x" }, {}),
+      buildEmailCreate({ to: "t@x.com", text: "x" }, BUILD_CONFIG),
+    ).toThrow(/`from`/);
+    expect(() =>
+      buildEmailCreate({ to: "t@x.com", from: "  ", text: "x" }, BUILD_CONFIG),
     ).toThrow(/`from`/);
   });
 
   test("rejects a body with neither text nor html", () => {
-    expect(() => buildEmailCreate({ to: "t@x.com", from: "f@x.com" }, {})).toThrow(
-      /text.*html/,
-    );
+    expect(() =>
+      buildEmailCreate({ to: "t@x.com", from: "f@x.com" }, BUILD_CONFIG),
+    ).toThrow(/text.*html/);
   });
 
   test("rejects a recipient list that resolves to no addresses", () => {
     expect(() =>
-      buildEmailCreate({ to: " , , ", from: "f@x.com", text: "x" }, {}),
+      buildEmailCreate(
+        { to: " , , ", from: "f@x.com", text: "x" },
+        BUILD_CONFIG,
+      ),
     ).toThrow(/at least one address/);
   });
 
   test("rejects CRLF injection in from, to, replyTo, subject, and headers", () => {
     const base = { to: "t@x.com", from: "f@x.com", text: "x" };
-    expect(() => buildEmailCreate({ ...base, from: "f@x.com\r\nX" }, {})).toThrow(
-      /`from`/,
-    );
-    expect(() => buildEmailCreate({ ...base, to: "t@x.com\nBcc: e" }, {})).toThrow(
-      /`to`/,
-    );
     expect(() =>
-      buildEmailCreate({ ...base, replyTo: "r@x.com\rX" }, {}),
+      buildEmailCreate({ ...base, from: "f@x.com\r\nX" }, BUILD_CONFIG),
+    ).toThrow(/`from`/);
+    expect(() =>
+      buildEmailCreate({ ...base, to: "t@x.com\nBcc: e" }, BUILD_CONFIG),
+    ).toThrow(/`to`/);
+    expect(() =>
+      buildEmailCreate({ ...base, replyTo: "r@x.com\rX" }, BUILD_CONFIG),
     ).toThrow(/`replyTo`/);
     expect(() =>
-      buildEmailCreate({ ...base, subject: "Hi\r\nInjected" }, {}),
+      buildEmailCreate({ ...base, subject: "Hi\r\nInjected" }, BUILD_CONFIG),
     ).toThrow(/`subject`/);
     expect(() =>
-      buildEmailCreate({ ...base, headers: { "X-A\nB": "v" } }, {}),
+      buildEmailCreate({ ...base, headers: { "X-A\nB": "v" } }, BUILD_CONFIG),
     ).toThrow(/headers/);
     expect(() =>
-      buildEmailCreate({ ...base, headers: { "X-A": "v\r\nC" } }, {}),
+      buildEmailCreate({ ...base, headers: { "X-A": "v\r\nC" } }, BUILD_CONFIG),
     ).toThrow(/headers/);
   });
 });
@@ -212,13 +235,16 @@ describe("buildSubmitRequest", () => {
       "urn:ietf:params:jmap:mail",
       "urn:ietf:params:jmap:submission",
     ]);
-    const [emailCall, subCall] = req.methodCalls as Array<
-      [string, Record<string, unknown>, string]
-    >;
+    const [emailCall, subCall] = req.methodCalls as [
+      [string, Record<string, unknown>, string],
+      [string, Record<string, unknown>, string],
+    ];
     expect(emailCall[0]).toBe("Email/set");
     expect(emailCall[1].accountId).toBe("acc1");
     expect(subCall[0]).toBe("EmailSubmission/set");
-    const create = subCall[1].create as { sub: { emailId: string; identityId: string } };
+    const create = subCall[1].create as {
+      sub: { emailId: string; identityId: string };
+    };
     expect(create.sub.emailId).toBe("#draft");
     expect(create.sub.identityId).toBe("id1");
   });
@@ -241,7 +267,10 @@ describe("parseSubmitResponse", () => {
         ["EmailSubmission/set", { created: { sub: { id: "S1" } } }, "1"],
       ],
     };
-    expect(parseSubmitResponse(body)).toEqual({ messageId: "S1", emailId: "E1" });
+    expect(parseSubmitResponse(body)).toEqual({
+      messageId: "S1",
+      emailId: "E1",
+    });
   });
 
   test("throws on a non-object response", () => {
@@ -254,7 +283,9 @@ describe("parseSubmitResponse", () => {
 
   test("throws on a method-level error (with and without a type)", () => {
     expect(() =>
-      parseSubmitResponse({ methodResponses: [["error", { type: "unknownMethod" }, "0"]] }),
+      parseSubmitResponse({
+        methodResponses: [["error", { type: "unknownMethod" }, "0"]],
+      }),
     ).toThrow(/unknownMethod/);
     expect(() =>
       parseSubmitResponse({ methodResponses: [["error", {}, "0"]] }),
@@ -267,7 +298,9 @@ describe("parseSubmitResponse", () => {
   test("throws when Email/set or EmailSubmission/set is missing", () => {
     expect(() =>
       parseSubmitResponse({
-        methodResponses: [["Email/set", { created: { draft: { id: "E1" } } }, "0"]],
+        methodResponses: [
+          ["Email/set", { created: { draft: { id: "E1" } } }, "0"],
+        ],
       }),
     ).toThrow(/missing Email\/set or EmailSubmission\/set/);
   });
@@ -296,7 +329,11 @@ describe("parseSubmitResponse", () => {
       parseSubmitResponse({
         methodResponses: [
           ["Email/set", { created: { draft: { id: "E1" } } }, "0"],
-          ["EmailSubmission/set", { notCreated: { sub: { type: "forbidden" } } }, "1"],
+          [
+            "EmailSubmission/set",
+            { notCreated: { sub: { type: "forbidden" } } },
+            "1",
+          ],
         ],
       }),
     ).toThrow(/EmailSubmission not created \(forbidden\)/);
@@ -340,25 +377,35 @@ describe("sendViaJmap (injected fetch)", () => {
     );
     expect(result).toEqual({ messageId: "S1", emailId: "E1" });
     expect(calls).toHaveLength(1);
-    expect(calls[0].url).toBe(CONFIG.endpoint);
-    expect(calls[0].init.method).toBe("POST");
-    expect(calls[0].init.headers.Authorization).toBe("Bearer tok");
+    const [call] = calls;
+    if (call === undefined) throw new Error("Expected one JMAP request");
+    expect(call.url).toBe(CONFIG.endpoint);
+    expect(call.init.method).toBe("POST");
+    expect(call.init.headers.Authorization).toBe("Bearer tok");
   });
 
   test("throws on a non-2xx HTTP status", async () => {
     const { fetchFn } = queueFetch([res(null, { ok: false, status: 401 })]);
     await expect(
-      sendViaJmap(fetchFn, { to: "t@x.com", from: "f@x.com", text: "x" }, CONFIG),
+      sendViaJmap(
+        fetchFn,
+        { to: "t@x.com", from: "f@x.com", text: "x" },
+        CONFIG,
+      ),
     ).rejects.toThrow(/HTTP 401/);
   });
 
   test("rejects an invalid config before any fetch", async () => {
     const { fetchFn, calls } = queueFetch([res(sendOkBody())]);
     await expect(
-      sendViaJmap(fetchFn, { to: "t@x.com", from: "f@x.com", text: "x" }, {
-        ...CONFIG,
-        endpoint: "",
-      }),
+      sendViaJmap(
+        fetchFn,
+        { to: "t@x.com", from: "f@x.com", text: "x" },
+        {
+          ...CONFIG,
+          endpoint: "",
+        },
+      ),
     ).rejects.toThrow(/endpoint/);
     expect(calls).toHaveLength(0);
   });
@@ -394,7 +441,8 @@ describe("discoverJmapSession", () => {
         ],
       ],
     });
-  const mailboxesBody = (list: unknown) => res({ methodResponses: [["Mailbox/get", { list }, "0"]] });
+  const mailboxesBody = (list: unknown) =>
+    res({ methodResponses: [["Mailbox/get", { list }, "0"]] });
 
   test("resolves endpoint, account, sent mailbox, and identity by `from`", async () => {
     const { fetchFn } = queueFetch([
@@ -426,7 +474,10 @@ describe("discoverJmapSession", () => {
       identitiesOk(),
       mailboxesBody([{ id: "mbDrafts", role: "drafts" }]),
     ]);
-    const cfg = await discoverJmapSession(fetchFn, { sessionUrl, token: "tok" });
+    const cfg = await discoverJmapSession(fetchFn, {
+      sessionUrl,
+      token: "tok",
+    });
     expect(cfg.identityId).toBe("idA");
     expect(cfg.from).toBe("a@x.com");
     expect(cfg.mailboxId).toBe("mbDrafts");
@@ -476,7 +527,9 @@ describe("discoverJmapSession", () => {
   });
 
   test("throws when there is no primary mail account (missing or empty)", async () => {
-    const { fetchFn: f1 } = queueFetch([res({ apiUrl: "u", primaryAccounts: {} })]);
+    const { fetchFn: f1 } = queueFetch([
+      res({ apiUrl: "u", primaryAccounts: {} }),
+    ]);
     await expect(
       discoverJmapSession(f1, { sessionUrl, token: "tok" }),
     ).rejects.toThrow(/no primary mail account/);
@@ -487,7 +540,10 @@ describe("discoverJmapSession", () => {
   });
 
   test("throws on a failed Identity/get HTTP request", async () => {
-    const { fetchFn } = queueFetch([sessionOk(), res(null, { ok: false, status: 500 })]);
+    const { fetchFn } = queueFetch([
+      sessionOk(),
+      res(null, { ok: false, status: 500 }),
+    ]);
     await expect(
       discoverJmapSession(fetchFn, { sessionUrl, token: "tok" }),
     ).rejects.toThrow(/HTTP 500/);
@@ -515,7 +571,11 @@ describe("discoverJmapSession", () => {
     await expect(
       discoverJmapSession(f1, { sessionUrl, token: "tok" }),
     ).rejects.toThrow(/malformed/);
-    const { fetchFn: f2 } = queueFetch([sessionOk(), identitiesOk(), mailboxesBody([])]);
+    const { fetchFn: f2 } = queueFetch([
+      sessionOk(),
+      identitiesOk(),
+      mailboxesBody([]),
+    ]);
     await expect(
       discoverJmapSession(f2, { sessionUrl, token: "tok" }),
     ).rejects.toThrow(/no sent or drafts mailbox/);
@@ -543,7 +603,10 @@ describe("discoverJmapSession", () => {
       }),
       mailboxesBody([99, { role: "sent" }, { id: "mbReal", role: "sent" }]),
     ]);
-    const cfg = await discoverJmapSession(fetchFn, { sessionUrl, token: "tok" });
+    const cfg = await discoverJmapSession(fetchFn, {
+      sessionUrl,
+      token: "tok",
+    });
     expect(cfg.identityId).toBe("idOk");
     expect(cfg.mailboxId).toBe("mbReal");
   });
@@ -553,13 +616,19 @@ describe("createJmapSender", () => {
   test("binds the config + fetch and sends one message", async () => {
     const { fetchFn, calls } = queueFetch([res(sendOkBody("E1", "S1"))]);
     const send = createJmapSender(CONFIG, fetchFn);
-    const result = await send({ to: "to@x.com", from: "f@x.com", html: "<p>h</p>" });
+    const result = await send({
+      to: "to@x.com",
+      from: "f@x.com",
+      html: "<p>h</p>",
+    });
     expect(result).toEqual({ messageId: "S1", emailId: "E1" });
     expect(calls).toHaveLength(1);
   });
 
   test("throws eagerly on an invalid config", () => {
     const { fetchFn } = queueFetch([]);
-    expect(() => createJmapSender({ ...CONFIG, token: "" }, fetchFn)).toThrow(/token/);
+    expect(() => createJmapSender({ ...CONFIG, token: "" }, fetchFn)).toThrow(
+      /token/,
+    );
   });
 });
