@@ -191,6 +191,18 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- Apply the documented 30-day terminal-message retention and reject invalid prune batches to
+  prevent premature audit deletion and scheduler loops.
+
+### Changed
+
+- Treat Convex `_generated` output as CLI-owned, exclude it from formatting, and expose a
+  dedicated codegen script.
+- Refresh all direct dependencies to their latest compatible releases for canary validation.
+- Require `convex@^1.45.0` and update `convex-test` to `^0.0.56`.
+
 ### Added
 
 - **Optional generic JMAP transport** (`@vllnt/convex-email/jmap`) — sends a queued
@@ -349,8 +361,8 @@ scheduler re-claims a re-queued message when ready. Rejects a missing id
 
 ### `prune(ctx, opts?) → number`
 
-`opts`: `{ before?: number; batch?: number }` (defaults: `before = Date.now()`,
-`batch = 200`).
+`opts`: `{ before?: number; batch?: number }` (defaults: `before = Date.now() - 30 days`,
+`batch = 200`; valid batch range: 1–500).
 
 Delete up to `batch` **terminal** messages whose `updatedAt < before`, oldest
 first (`sent` then `failed`, each via the `by_status_updated` index), and return
@@ -627,6 +639,7 @@ export const DEFAULT_RETENTION_MS = 2_592_000_000;
 
 /** Default page size for a `prune` pass before the sweep self-reschedules. */
 export const DEFAULT_PRUNE_BATCH = 200;
+export const MAX_PRUNE_BATCH = 500;
 
 ```
 
@@ -2239,6 +2252,7 @@ export const messageView = v.object({
 import { ConvexError, v } from "convex/values";
 import { api } from "./_generated/api";
 import { mutation } from "./_generated/server";
+import { DEFAULT_RETENTION_MS, MAX_PRUNE_BATCH } from "../shared";
 import { jsonValue } from "./validators";
 
 /**
@@ -2352,7 +2366,7 @@ export const markSending = mutation({
     }
 
     const attempts = msg.attempts + 1;
-    await ctx.db.patch(msg._id, {
+    await ctx.db.patch("messages", msg._id, {
       status: "sending",
       attempts,
       updatedAt: Date.now(),
@@ -2396,7 +2410,7 @@ export const markSent = mutation({
       });
     }
 
-    await ctx.db.patch(msg._id, {
+    await ctx.db.patch("messages", msg._id, {
       status: "sent",
       providerId: args.providerId,
       error: undefined,
@@ -2441,7 +2455,7 @@ export const markFailed = mutation({
 
     const retried = msg.attempts < msg.maxAttempts;
     const status = retried ? ("queued" as const) : ("failed" as const);
-    await ctx.db.patch(msg._id, {
+    await ctx.db.patch("messages", msg._id, {
       status,
       error: args.error,
       updatedAt: Date.now(),
@@ -2464,7 +2478,13 @@ export const prune = mutation({
   args: { before: v.optional(v.number()), batch: v.number() },
   returns: v.number(),
   handler: async (ctx, args) => {
-    const before = args.before ?? Date.now();
+    if (!Number.isFinite(args.batch) || !Number.isInteger(args.batch) || args.batch < 1 || args.batch > MAX_PRUNE_BATCH) {
+      throw new ConvexError({ code: "INVALID_BATCH", message: `batch must be an integer between 1 and ${MAX_PRUNE_BATCH}` });
+    }
+    if (args.before !== undefined && !Number.isFinite(args.before)) {
+      throw new ConvexError({ code: "INVALID_BEFORE", message: "before must be finite" });
+    }
+    const before = args.before ?? Date.now() - DEFAULT_RETENTION_MS;
 
     // Both terminal states, queried explicitly (no query-in-loop): sent first,
     // then failed for whatever batch budget remains.
@@ -2485,7 +2505,7 @@ export const prune = mutation({
         : [];
 
     for (const row of [...sent, ...failed]) {
-      await ctx.db.delete(row._id);
+      await ctx.db.delete("messages", row._id);
     }
     const removed = sent.length + failed.length;
 
