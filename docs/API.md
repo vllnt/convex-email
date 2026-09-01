@@ -80,8 +80,8 @@ scheduler re-claims a re-queued message when ready. Rejects a missing id
 
 ### `prune(ctx, opts?) → number`
 
-`opts`: `{ before?: number; batch?: number }` (defaults: `before = Date.now()`,
-`batch = 200`).
+`opts`: `{ before?: number; batch?: number }` (defaults: `before = Date.now() - 30 days`,
+`batch = 200`; valid batch range: 1–500).
 
 Delete up to `batch` **terminal** messages whose `updatedAt < before`, oldest
 first (`sent` then `failed`, each via the `by_status_updated` index), and return
