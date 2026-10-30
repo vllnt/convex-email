@@ -178,17 +178,17 @@ second instance (`app.use(component, { name })`) for a static partition.
 
 | Changed | Update in the same commit |
 |---------|--------------------------|
-| Public API (enqueue/markSending/markSent/markFailed/get/listByStatus/prune signatures) | README API Reference table, `docs/API.md`, `llms.txt` context, regenerate `llms-full.txt` |
+| Public API (enqueue/markSending/markSent/markFailed/get/listByStatus/prune signatures) | README API Reference table, `docs/API.md`, `llms.txt` context |
 | Config options / defaults (validator, maxAttempts, retention, batch) | README API Reference, `docs/API.md` constructor section |
 | Schema / table / indexes | README Architecture, `docs/API.md` |
 | Error codes | `docs/API.md` → `## Error codes` table |
 | `peerDependencies.convex` version | `llms.txt` context line (`convex@^X.Y.Z`), `docs/API.md` Compatibility line, README Installation peer note |
 | `peerDependencies.nodemailer` floor (optional SMTP peer) | `docs/API.md` Compatibility + SMTP section, `llms.txt` context, README Installation + Transports, CHANGELOG |
-| SMTP transport API (`sendViaSmtp` / `validateSmtpConfig` / `toMailOptions` / `createSmtpSender` / `SmtpConfig` / `SmtpMessage`) | README Transports, `docs/API.md` SMTP section, `scripts/generate-llms.mjs` source list, regenerate `llms-full.txt` |
-| JMAP transport API (`sendViaJmap` / `discoverJmapSession` / `createJmapSender` / `JmapConfig` / `JmapMessage`) | README Transports, `docs/API.md` JMAP section, `vitest.config.mts` `coverage.include`, `scripts/generate-llms.mjs` source list, regenerate `llms-full.txt` |
+| SMTP transport API (`sendViaSmtp` / `validateSmtpConfig` / `toMailOptions` / `createSmtpSender` / `SmtpConfig` / `SmtpMessage`) | README Transports, `docs/API.md` SMTP section, `llms.txt` context |
+| JMAP transport API (`sendViaJmap` / `discoverJmapSession` / `createJmapSender` / `JmapConfig` / `JmapMessage`) | README Transports, `docs/API.md` JMAP section, `vitest.config.mts` `coverage.include`, `llms.txt` context |
 | `coverage.include` (a new covered source file) | `vitest.config.mts` include list; a new file without a test fails CI |
 | Lifecycle / state machine | `docs/API.md` mutation sections, Key design decisions above |
-| Any change | `pnpm generate:llms` to keep `llms-full.txt` current |
+| Any change to `llms.txt` | `pnpm generate:llms` validates the index and its links (it generates nothing; `llms.txt` is the only LLM index) |
 
 Grep old values before committing (e.g. after a `peerDependencies.convex` bump, `git grep "1.41.0"` → only the new range survives).
 

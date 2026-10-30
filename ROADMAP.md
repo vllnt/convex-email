@@ -31,7 +31,7 @@ standard CI/docs.
 - [x] transactional-queue.3 Add `get` / `listByStatus` queries + a bounded self-rescheduling prune cron (terminal-only, 30-day retention)
 - [x] transactional-queue.4 Typed-generic opaque `payload` (`Email<TPayload>` + host `payloadValidator`), mount-safe across named `app.use` mounts
 - [x] transactional-queue.5 Ship the optional `./smtp` adapter — pure `sendViaSmtp` (100% covered, CRLF-guarded) + a thin `nodemailer` wrapper (optional peer, host `"use node"` action)
-- [x] transactional-queue.6 100% E2E via `example/convex` (every client method, happy + adversarial) + standard CI, docs, `llms.txt`/`llms-full.txt`
+- [x] transactional-queue.6 100% E2E via `example/convex` (every client method, happy + adversarial) + standard CI, docs, `llms.txt` (originally also a generated full-source bundle; now retired)
 
 ## jmap-transport [DONE 2026-06]
 
@@ -53,7 +53,7 @@ AGENTS updated; stays in `0.1.0` (no version bump; publish gated by the fleet ho
 - [x] jmap-transport.2 Add JMAP session discovery (`/.well-known/jmap` → `accountId` + `Identity/get` `identityId` + `Mailbox/get` drafts mailbox) or accept them via `JmapConfig`; resolve once per sender
 - [x] jmap-transport.3 Ship the `./jmap` subpath export — zero runtime deps, native `fetch`, runs in a plain action (no `"use node"`); add the `package.json` exports entry, dist build, and `vitest` `coverage.include`
 - [x] jmap-transport.4 Route per-transport in the `example/convex` flush (`smtp` vs `jmap` by `msg.transport`) and exercise the JMAP path end-to-end at 100% E2E against the component runtime with a fake `fetch`
-- [x] jmap-transport.5 Docs sync — README Transports (generic JMAP: any JMAP server, config `{ endpoint, token }`, plain-action note), `docs/API.md` JMAP section, AGENTS.md/AGENTS Key design decision, regenerate `llms-full.txt`
+- [x] jmap-transport.5 Docs sync — README Transports (generic JMAP: any JMAP server, config `{ endpoint, token }`, plain-action note), `docs/API.md` JMAP section, AGENTS.md/AGENTS Key design decision, generate the then-supported full-source bundle (now retired in favor of maintained `llms.txt`)
 
 ## Later
 
