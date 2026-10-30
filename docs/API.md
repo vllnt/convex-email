@@ -1,8 +1,8 @@
 # API Reference — @vllnt/convex-email
 
 **Compatibility:** `convex@^1.45.0` · optional `nodemailer@^8.0.4` (only for the
-[SMTP transport](#smtp-transport-optional---vllntconvex-emailsmtp)). The
-[JMAP transport](#jmap-transport-optional---vllntconvex-emailjmap) is
+[SMTP transport](#smtp-transport-optional--vllntconvex-emailsmtp)). The
+[JMAP transport](#jmap-transport-optional--vllntconvex-emailjmap) is
 `fetch`-based and needs no extra dependency.
 
 Construct the client with the mounted component and optional host config:
