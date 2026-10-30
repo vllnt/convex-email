@@ -106,6 +106,7 @@ describe("email — happy path (the durable send queue)", () => {
       messageId: "m_dup_sent",
       providerId: "p1",
     });
+    const first = await t.query(api.example.get, { messageId: "m_dup_sent" });
     vi.setSystemTime(500);
     await t.mutation(api.example.markSent, {
       messageId: "m_dup_sent",
@@ -115,7 +116,8 @@ describe("email — happy path (the durable send queue)", () => {
     expect(msg?.status).toBe("sent");
     // the original providerId is preserved; the no-op did not overwrite or advance time
     expect(msg?.providerId).toBe("p1");
-    expect(msg?.updatedAt).toBe(0);
+    expect(msg?.updatedAt).toBe(first?.updatedAt);
+    expect(msg?.updatedAt).toBeLessThan(500);
   });
 
   test("enqueue with no payload records an undefined payload", async () => {
@@ -524,9 +526,12 @@ describe("email — prune (bounded + self-rescheduling)", () => {
     });
     await t.mutation(api.example.markSending, { messageId: "d" });
     await t.mutation(api.example.markSent, { messageId: "d" });
-    vi.setSystemTime(2_592_000_000);
+    const sent = await t.query(api.example.get, { messageId: "d" });
+    expect(sent?.status).toBe("sent");
+    const sentAt = sent?.updatedAt ?? Number.NaN;
+    vi.setSystemTime(sentAt + 2_592_000_000);
     expect(await t.mutation(api.example.prune, {})).toBe(0);
-    vi.setSystemTime(2_592_000_001);
+    vi.setSystemTime(sentAt + 2_592_000_001);
     expect(await t.mutation(api.example.prune, {})).toBe(1);
   });
 
