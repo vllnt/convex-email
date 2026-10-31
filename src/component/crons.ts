@@ -1,5 +1,5 @@
 import { cronJobs } from "convex/server";
-import { api } from "./_generated/api";
+import { api } from "./_generated/api.js";
 
 /**
  * Default sweep cadence and page size for the built-in prune cron. The cron is
