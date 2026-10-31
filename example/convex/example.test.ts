@@ -553,7 +553,7 @@ describe("email — prune (bounded + self-rescheduling)", () => {
     },
   );
 
-  test.each([Number.NaN, 0, -1, 1.5, 101])(
+  test.each([Number.NaN, 0, -1, 1.5])(
     "enqueue rejects invalid maxAttempts %s",
     async (maxAttempts) => {
       const t = setup();

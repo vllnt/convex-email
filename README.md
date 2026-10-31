@@ -123,7 +123,7 @@ Full reference: [docs/API.md](docs/API.md).
 ## Options and limitations
 
 - Constructor: `payloadValidator?: (unknown) => TPayload` and
-  `maxAttempts?: number` (default 5, integer from 1 to 100). Convex `v.*` validators do not have
+  `maxAttempts?: number` (default 5, positive integer). Convex `v.*` validators do not have
   `.parse`.
 - Enqueue options: `{ payload?, subjectRef?, idempotencyKey?, maxAttempts? }`.
   Use the returned `messageId`, which may differ from the proposed id on

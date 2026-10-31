@@ -9,8 +9,8 @@ All notable changes to this project are documented here. The format is based on
 ### Fixed
 
 - `enqueue` rejects an empty `messageId`, `to`, `from`, `transport` or `idempotencyKey` with
-  `ConvexError({ code: "INVALID_ARGUMENT" })`, and a `maxAttempts` that is not an integer from 1
-  to 100 with `ConvexError({ code: "INVALID_MAX_ATTEMPTS" })`.
+  `ConvexError({ code: "INVALID_ARGUMENT" })`, and a `maxAttempts` that is not a positive
+  integer with `ConvexError({ code: "INVALID_MAX_ATTEMPTS" })`.
 - `@vllnt/convex-email/test` now type-checks under `moduleResolution: nodenext` (explicit `.js`
   relative imports, Vite client types referenced).
 

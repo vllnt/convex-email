@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { api } from "./_generated/api.js";
 import { mutation } from "./_generated/server.js";
-import { DEFAULT_RETENTION_MS, MAX_ATTEMPTS_LIMIT, MAX_PRUNE_BATCH } from "../shared.js";
+import { DEFAULT_RETENTION_MS, MAX_PRUNE_BATCH } from "../shared.js";
 import { jsonValue } from "./validators.js";
 
 /**
@@ -24,7 +24,7 @@ import { jsonValue } from "./validators.js";
  * @throws `ConvexError({ code: "INVALID_ARGUMENT" })` when `messageId`, `to`,
  *   `from`, `transport`, or a supplied `idempotencyKey` is an empty string.
  * @throws `ConvexError({ code: "INVALID_MAX_ATTEMPTS" })` when `maxAttempts` is
- *   not an integer from 1 to 100.
+ *   not a positive integer.
  */
 export const enqueue = mutation({
   args: {
@@ -54,10 +54,10 @@ export const enqueue = mutation({
         });
       }
     }
-    if (!Number.isInteger(args.maxAttempts) || args.maxAttempts < 1 || args.maxAttempts > MAX_ATTEMPTS_LIMIT) {
+    if (!Number.isInteger(args.maxAttempts) || args.maxAttempts < 1) {
       throw new ConvexError({
         code: "INVALID_MAX_ATTEMPTS",
-        message: `maxAttempts must be an integer between 1 and ${MAX_ATTEMPTS_LIMIT}`,
+        message: "maxAttempts must be a positive integer",
       });
     }
     if (args.idempotencyKey !== undefined) {
