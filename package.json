@@ -4,7 +4,7 @@
   "description": "Durable, transport-agnostic outbound transactional email queue — enqueue, retry, idempotent send, and per-message delivery status as a Convex component",
   "license": "MIT",
   "type": "module",
-  "packageManager": "pnpm@9.15.4",
+  "packageManager": "pnpm@10.34.8",
   "files": [
     "dist",
     "src"
@@ -53,9 +53,6 @@
     "test:coverage": "vitest run --coverage --coverage.reporter=text",
     "generate:llms": "node scripts/generate-llms.mjs",
     "preversion": "pnpm install --frozen-lockfile && pnpm build && pnpm test:coverage && pnpm typecheck && pnpm generate:llms",
-    "prepublishOnly": "npm whoami || npm login",
-    "alpha": "npm version prerelease --preid alpha && npm publish --tag alpha && git push --follow-tags",
-    "release": "npm version patch && npm publish && git push --follow-tags",
     "check:agents": "node -e \"const f=require('node:fs');if(!f.existsSync('AGENTS.md')||f.existsSync('CLAUDE.md')||f.existsSync('.claude'))process.exit(1)\"",
     "codegen": "pnpm convex codegen --component-dir ./src/component"
   },
@@ -85,6 +82,13 @@
     "vitest": "^5.0.5"
   },
   "pnpm": {
+    "minimumReleaseAge": 10080,
+    "minimumReleaseAgeExclude": [
+      "@vllnt/*"
+    ],
+    "ignoredBuiltDependencies": [
+      "esbuild"
+    ],
     "overrides": {
       "brace-expansion@<1.1.21": "1.1.21",
       "brace-expansion@>=5.0.0 <5.0.12": "5.0.12",
