@@ -43,13 +43,14 @@ await email.markSent(ctx, messageId, { providerId }); // or markFailed → host 
 ## Installation
 
 ```bash
-pnpm add @vllnt/convex-email@canary convex@^1.45.0
+pnpm add @vllnt/convex-email convex@^1.45.0
 ```
 
-Peer dependency: `convex@^1.45.0`. The queue core has zero third-party runtime
-deps. `nodemailer@^8.0.4` is an optional peer dep — only for the SMTP transport.
-The JMAP transport (`@vllnt/convex-email/jmap`) is `fetch`-based and needs no
-extra dependency.
+The command installs the latest stable release; use `@vllnt/convex-email@canary`
+for the newest pre-release build from `main`. Peer dependency: `convex@^1.45.0`.
+The queue core has zero third-party runtime deps. `nodemailer@^8.0.4` is an
+optional peer dep — only for the SMTP transport. The JMAP transport
+(`@vllnt/convex-email/jmap`) is `fetch`-based and needs no extra dependency.
 
 This README follows `main` and the canary channel; `latest` is the separate
 stable release. Pin an exact canary version for reproducible installs.
@@ -123,8 +124,8 @@ Full reference: [docs/API.md](docs/API.md).
 ## Options and limitations
 
 - Constructor: `payloadValidator?: (unknown) => TPayload` and
-  `maxAttempts?: number` (default 5, positive integer). Convex `v.*` validators do not have
-  `.parse`.
+  `maxAttempts?: number` (default 5, positive integer). Convex `v.*` validators
+  do not have `.parse`.
 - Enqueue options: `{ payload?, subjectRef?, idempotencyKey?, maxAttempts? }`.
   Use the returned `messageId`, which may differ from the proposed id on
   deduplication.
@@ -219,8 +220,8 @@ Tests run against the real component runtime via `convex-test`
 ### Testing your app
 
 `@vllnt/convex-email/test` exports `register(t, name = "email")` to mount the
-component in a `convex-test` instance. It needs `convex-test` and `vitest`
-(with Vite's `import.meta.glob`) in the consuming app:
+component in a `convex-test` instance. It needs `convex-test` and `vitest` (with
+Vite's `import.meta.glob`) in the consuming app:
 
 ```ts
 /// <reference types="vite/client" />
