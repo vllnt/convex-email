@@ -1,6 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
-import { jsonValue, messageStatus } from "./validators";
+import { jsonValue, messageStatus } from "./validators.js";
 
 /**
  * Sandboxed table — the outbound-email queue's own concern. A `messageId` is a

@@ -535,6 +535,40 @@ describe("email — prune (bounded + self-rescheduling)", () => {
     expect(await t.mutation(api.example.prune, {})).toBe(1);
   });
 
+  test.each(["messageId", "to", "from", "transport", "idempotencyKey"])(
+    "enqueue rejects an empty %s",
+    async (field) => {
+      const t = setup();
+      const args = {
+        messageId: "m1",
+        to: "user@x.com",
+        from: "no-reply@app.com",
+        transport: "jmap",
+        [field]: "",
+      };
+      await expect(t.mutation(api.example.enqueue, args)).rejects.toThrow(
+        /INVALID_ARGUMENT/,
+      );
+      expect(await t.query(api.example.get, { messageId: "m1" })).toBeNull();
+    },
+  );
+
+  test.each([Number.NaN, 0, -1, 1.5])(
+    "enqueue rejects invalid maxAttempts %s",
+    async (maxAttempts) => {
+      const t = setup();
+      await expect(
+        t.mutation(api.example.enqueue, {
+          messageId: "m1",
+          to: "user@x.com",
+          from: "no-reply@app.com",
+          transport: "jmap",
+          maxAttempts,
+        }),
+      ).rejects.toThrow(/INVALID_MAX_ATTEMPTS/);
+    },
+  );
+
   test.each([Number.NaN, 0, -1, 1.5, 501])("rejects invalid batch %s", async (batch) => {
     const t = setup();
     await expect(t.mutation(api.example.prune, { batch })).rejects.toThrow(

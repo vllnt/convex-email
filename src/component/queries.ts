@@ -1,8 +1,8 @@
 import { v } from "convex/values";
 import { paginationOptsValidator } from "convex/server";
-import { query } from "./_generated/server";
-import { messageStatus, messageView } from "./validators";
-import type { Doc } from "./_generated/dataModel";
+import { query } from "./_generated/server.js";
+import { messageStatus, messageView } from "./validators.js";
+import type { Doc } from "./_generated/dataModel.js";
 
 /** Project a stored message row to its public view (drops internal fields). */
 function view(msg: Doc<"messages">) {

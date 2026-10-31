@@ -1,8 +1,8 @@
 import { ConvexError, v } from "convex/values";
-import { api } from "./_generated/api";
-import { mutation } from "./_generated/server";
-import { DEFAULT_RETENTION_MS, MAX_PRUNE_BATCH } from "../shared";
-import { jsonValue } from "./validators";
+import { api } from "./_generated/api.js";
+import { mutation } from "./_generated/server.js";
+import { DEFAULT_RETENTION_MS, MAX_PRUNE_BATCH } from "../shared.js";
+import { jsonValue } from "./validators.js";
 
 /**
  * Enqueue an outbound message and return its id immediately — the durable queue
@@ -20,6 +20,11 @@ import { jsonValue } from "./validators";
  * and a message already carries it, the existing message's id is returned and no
  * new row is inserted — a retried enqueue (double-submit, at-least-once delivery)
  * can never produce a duplicate send.
+ *
+ * @throws `ConvexError({ code: "INVALID_ARGUMENT" })` when `messageId`, `to`,
+ *   `from`, `transport`, or a supplied `idempotencyKey` is an empty string.
+ * @throws `ConvexError({ code: "INVALID_MAX_ATTEMPTS" })` when `maxAttempts` is
+ *   not a positive integer.
  */
 export const enqueue = mutation({
   args: {
@@ -34,6 +39,27 @@ export const enqueue = mutation({
   },
   returns: v.object({ messageId: v.string(), deduplicated: v.boolean() }),
   handler: async (ctx, args) => {
+    const fields: Array<[string, string | undefined]> = [
+      ["messageId", args.messageId],
+      ["to", args.to],
+      ["from", args.from],
+      ["transport", args.transport],
+      ["idempotencyKey", args.idempotencyKey],
+    ];
+    for (const [name, value] of fields) {
+      if (value === "") {
+        throw new ConvexError({
+          code: "INVALID_ARGUMENT",
+          message: `${name} must not be empty`,
+        });
+      }
+    }
+    if (!Number.isInteger(args.maxAttempts) || args.maxAttempts < 1) {
+      throw new ConvexError({
+        code: "INVALID_MAX_ATTEMPTS",
+        message: "maxAttempts must be a positive integer",
+      });
+    }
     if (args.idempotencyKey !== undefined) {
       const dupe = await ctx.db
         .query("messages")

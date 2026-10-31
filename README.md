@@ -123,7 +123,7 @@ Full reference: [docs/API.md](docs/API.md).
 ## Options and limitations
 
 - Constructor: `payloadValidator?: (unknown) => TPayload` and
-  `maxAttempts?: number` (default 5). Convex `v.*` validators do not have
+  `maxAttempts?: number` (default 5, positive integer). Convex `v.*` validators do not have
   `.parse`.
 - Enqueue options: `{ payload?, subjectRef?, idempotencyKey?, maxAttempts? }`.
   Use the returned `messageId`, which may differ from the proposed id on
@@ -215,6 +215,22 @@ pnpm test:coverage  # enforced 100% on covered files
 
 Tests run against the real component runtime via `convex-test`
 (`@edge-runtime/vm`), not mocks.
+
+### Testing your app
+
+`@vllnt/convex-email/test` exports `register(t, name = "email")` to mount the
+component in a `convex-test` instance. It needs `convex-test` and `vitest`
+(with Vite's `import.meta.glob`) in the consuming app:
+
+```ts
+/// <reference types="vite/client" />
+import { convexTest } from "convex-test";
+import { register } from "@vllnt/convex-email/test";
+import schema from "./schema";
+
+const t = convexTest(schema, import.meta.glob("./**/*.ts"));
+register(t);
+```
 
 ## Documentation
 

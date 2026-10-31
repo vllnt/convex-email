@@ -4,42 +4,22 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.1] - Unreleased
 
 ### Fixed
 
-- Apply the documented 30-day terminal-message retention and reject invalid prune batches to
-  prevent premature audit deletion and scheduler loops.
+- `enqueue` rejects an empty `messageId`, `to`, `from`, `transport` or `idempotencyKey` with
+  `ConvexError({ code: "INVALID_ARGUMENT" })`, and a `maxAttempts` that is not a positive
+  integer with `ConvexError({ code: "INVALID_MAX_ATTEMPTS" })`.
+- `@vllnt/convex-email/test` now type-checks under `moduleResolution: nodenext` (explicit `.js`
+  relative imports, Vite client types referenced).
 
 ### Changed
 
-- Treat Convex `_generated` output as CLI-owned, exclude it from formatting, and expose a
-  dedicated codegen script.
-- Refresh all direct dependencies to their latest compatible releases for canary validation.
-- Require `convex@^1.45.0` and update `convex-test` to `^0.0.56`.
+- Adopt pnpm 10 with a release-age gate; releases are published only from CI with npm
+  trusted publishing and provenance.
 
-### Added
-
-- **Optional generic JMAP transport** (`@vllnt/convex-email/jmap`) — sends a queued
-  message over **any JMAP server's HTTP API** (Stalwart, Fastmail, Cyrus, Apache
-  James). JMAP is the protocol (RFC 8620/8621); the server is host config, so no
-  vendor is baked in — the adapter is `./jmap`, never `./stalwart`.
-  - Runs in a **plain Convex action** — JMAP is HTTP, so `fetch` works in V8: **no
-    `"use node"`, no `nodemailer`, zero extra dependencies** (unlike the SMTP
-    adapter's raw socket).
-  - Pure, injected-`fetch` core — `sendViaJmap(fetchFn, message, config)`,
-    `discoverJmapSession(fetchFn, opts)` (resolves account / identity / Sent mailbox
-    from the JMAP session), `createJmapSender(config, fetchFn)`, plus
-    `validateJmapConfig` / `buildEmailCreate` / `buildSubmitRequest` /
-    `parseSubmitResponse`. The whole adapter is **100% covered** with a fake `fetch`
-    (no excluded wrapper); it rejects CR/LF header injection in every address,
-    subject, and header value.
-  - `example/convex/` adds `flushQueuedOverJmap` (the queue→JMAP wiring) and
-    `flushQueuedRouted` (one queue routed per message by its `transport` tag —
-    `smtp` vs `jmap`), exercised end to end against the component runtime with a
-    fake `fetch`.
-
-## [0.1.0] - 2026-06-14
+## [0.1.0] - 2026-09-01
 
 ### Added
 
@@ -88,3 +68,33 @@ All notable changes to this project are documented here. The format is based on
   the `envelope.size` CRLF injection advisory GHSA-c7w3-x93f-qmm8 / CVE-2025-14874).
   The queue core still installs and runs with **zero third-party runtime deps**; only
   a host importing `@vllnt/convex-email/smtp` pulls `nodemailer`.
+- **Optional generic JMAP transport** (`@vllnt/convex-email/jmap`) — sends a queued
+  message over **any JMAP server's HTTP API** (Stalwart, Fastmail, Cyrus, Apache
+  James). JMAP is the protocol (RFC 8620/8621); the server is host config, so no
+  vendor is baked in — the adapter is `./jmap`, never `./stalwart`.
+  - Runs in a **plain Convex action** — JMAP is HTTP, so `fetch` works in V8: **no
+    `"use node"`, no `nodemailer`, zero extra dependencies** (unlike the SMTP
+    adapter's raw socket).
+  - Pure, injected-`fetch` core — `sendViaJmap(fetchFn, message, config)`,
+    `discoverJmapSession(fetchFn, opts)` (resolves account / identity / Sent mailbox
+    from the JMAP session), `createJmapSender(config, fetchFn)`, plus
+    `validateJmapConfig` / `buildEmailCreate` / `buildSubmitRequest` /
+    `parseSubmitResponse`. The whole adapter is **100% covered** with a fake `fetch`
+    (no excluded wrapper); it rejects CR/LF header injection in every address,
+    subject, and header value.
+  - `example/convex/` adds `flushQueuedOverJmap` (the queue→JMAP wiring) and
+    `flushQueuedRouted` (one queue routed per message by its `transport` tag —
+    `smtp` vs `jmap`), exercised end to end against the component runtime with a
+    fake `fetch`.
+
+### Fixed
+
+- Apply the documented 30-day terminal-message retention and reject invalid prune batches to
+  prevent premature audit deletion and scheduler loops.
+
+### Changed
+
+- Treat Convex `_generated` output as CLI-owned, exclude it from formatting, and expose a
+  dedicated codegen script.
+- Refresh all direct dependencies to their latest compatible releases .
+- Require `convex@^1.45.0` and update `convex-test` to `^0.0.56`.
