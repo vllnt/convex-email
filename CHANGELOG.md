@@ -19,7 +19,7 @@ All notable changes to this project are documented here. The format is based on
 - Adopt pnpm 10 with a release-age gate; releases are published only from CI with npm
   trusted publishing and provenance.
 - The optional `nodemailer` peer range is now `^8.0.4 || ^9.0.0 || ^10.0.0` (was `^8.0.4`),
-  so hosts can move to nodemailer 10, which fixes the addressparser DoS and
+  so hosts can move to nodemailer 10.1.4 or later, which fixes the addressparser DoS and
   recipient-domain-bypass advisories still open in 8.x and 9.x. Prefer `^10.1.4`, the first
   release without a published advisory; it requires Node 20+. This package's own tests now
   run on nodemailer 10.4.0 and `@types/nodemailer` is dropped (nodemailer 10 ships its types).
