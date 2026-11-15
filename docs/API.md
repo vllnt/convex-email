@@ -1,6 +1,7 @@
 # API Reference — @vllnt/convex-email
 
-**Compatibility:** `convex@^1.45.0` · optional `nodemailer@^8.0.4` (only for the
+**Compatibility:** `convex@^1.45.0` · optional
+`nodemailer@^8.0.4 || ^9.0.0 || ^10.0.0` (only for the
 [SMTP transport](#smtp-transport-optional--vllntconvex-emailsmtp)). The
 [JMAP transport](#jmap-transport-optional--vllntconvex-emailjmap) is
 `fetch`-based and needs no extra dependency.
@@ -167,13 +168,21 @@ A separate, optional export that actually sends a queued message over **generic
 SMTP** (Stalwart, Postfix, any server). The real send runs in the **host's own
 `"use node"` action**, which imports this module; the component itself never
 sends. The SMTP server is host config. `nodemailer` is an **optional peer
-dependency** (`^8.0.4`); importing this entry is the opt-in, and a backend-only
-consumer (importing only `@vllnt/convex-email`) pulls zero SMTP code.
+dependency** (`^8.0.4 || ^9.0.0 || ^10.0.0`); importing this entry is the
+opt-in, and a backend-only consumer (importing only `@vllnt/convex-email`) pulls
+zero SMTP code.
 
-> The pinned floor `nodemailer@^8.0.4` is the first release fixing the
+> The range floor `nodemailer@^8.0.4` is the first release fixing the
 > `envelope.size` CRLF SMTP-command-injection advisory (GHSA-c7w3-x93f-qmm8 /
 > CVE-2025-14874); the adapter additionally rejects CR/LF in every address,
 > subject, and header value it sets.
+>
+> Prefer `nodemailer@^10.1.4`, the first release without a published advisory
+> (8.x and 9.x still carry addressparser DoS and recipient-domain bypass
+> advisories). nodemailer 10 needs Node 20+ and ships its own types. nodemailer
+> 9 validates TLS certificates by default when fetching remote content; the
+> adapter never fetches remote content (it passes only host, port, secure, auth
+> and plain-string message fields), so the upgrade needs no config change.
 
 ### Types
 

@@ -58,7 +58,7 @@
   },
   "peerDependencies": {
     "convex": "^1.45.0",
-    "nodemailer": "^8.0.4"
+    "nodemailer": "^8.0.4 || ^9.0.0 || ^10.0.0"
   },
   "peerDependenciesMeta": {
     "nodemailer": {
@@ -67,7 +67,6 @@
   },
   "devDependencies": {
     "@edge-runtime/vm": "^5.0.0",
-    "@types/nodemailer": "^8.0.2",
     "@typescript/native": "npm:typescript@7.0.2",
     "@vitest/coverage-v8": "^5.0.5",
     "@vllnt/eslint-config": "2.0.0",
@@ -75,7 +74,7 @@
     "convex": "^1.48.0",
     "convex-test": "^0.0.65",
     "eslint": "^9.39.5",
-    "nodemailer": "^10.2.1",
+    "nodemailer": "^10.4.0",
     "prettier": "^3.9.10",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vite": "^8.3.5",

@@ -48,9 +48,10 @@ pnpm add @vllnt/convex-email convex@^1.45.0
 
 The command installs the latest stable release; use `@vllnt/convex-email@canary`
 for the newest pre-release build from `main`. Peer dependency: `convex@^1.45.0`.
-The queue core has zero third-party runtime deps. `nodemailer@^8.0.4` is an
-optional peer dep — only for the SMTP transport. The JMAP transport
-(`@vllnt/convex-email/jmap`) is `fetch`-based and needs no extra dependency.
+The queue core has zero third-party runtime deps. `nodemailer`
+(`^8.0.4 || ^9.0.0 || ^10.0.0`) is an optional peer dep — only for the SMTP
+transport. The JMAP transport (`@vllnt/convex-email/jmap`) is `fetch`-based and
+needs no extra dependency.
 
 This README follows `main` and the canary channel; `latest` is the separate
 stable release. Pin an exact canary version for reproducible installs.
@@ -154,7 +155,10 @@ A generic SMTP adapter ships at `@vllnt/convex-email/smtp` — it sends through
 any SMTP server (Stalwart, Postfix, any relay). The real send runs in the host's
 own `"use node"` action; the component never sends.
 
-Install the optional peer with `pnpm add nodemailer@^8.0.4`.
+Install the optional peer with `pnpm add nodemailer@^10.1.4`. The accepted range
+is `^8.0.4 || ^9.0.0 || ^10.0.0`, but 10.1.4 is the first release without a
+published advisory (8.x and 9.x still carry addressparser DoS and
+recipient-domain bypass advisories). nodemailer 10 needs Node 20+.
 
 ```ts
 "use node";
