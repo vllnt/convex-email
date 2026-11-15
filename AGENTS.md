@@ -94,8 +94,10 @@ second instance (`app.use(component, { name })`) for a static partition.
   auth, from? }`, host-supplied — and works with Stalwart, Postfix, ANY SMTP server. SMTP is the
   protocol; the server is host config, so NO vendor is baked in (still `convex-email`, never
   `convex-stalwart`; swapping the server is a config change). `nodemailer` is an OPTIONAL peer dependency
-  (`peerDependenciesMeta.nodemailer.optional`, floor `^8.0.4` — the release fixing the `envelope.size`
-  CRLF injection advisory GHSA-c7w3-x93f-qmm8); the queue core still has ZERO third-party runtime deps,
+  (`peerDependenciesMeta.nodemailer.optional`, range `^8.0.4 || ^9.0.0 || ^10.0.0` — the floor is the
+  release fixing the `envelope.size` CRLF injection advisory GHSA-c7w3-x93f-qmm8; hosts should prefer
+  `^10.1.4`, the first release without a published advisory; the repo's own dev/test dependency is
+  nodemailer 10, which ships its own types, so there is no `@types/nodemailer`); the queue core still has ZERO third-party runtime deps,
   and only a host importing `./smtp` pulls it (the tree-shake boundary is the export entry, exactly like
   an optional `./react`). **A Convex component CANNOT ship a `"use node"` action** — components run in V8
   only, the Node runtime is host-only (verified against Convex docs + the official `@convex-dev/resend`
@@ -183,7 +185,7 @@ second instance (`app.use(component, { name })`) for a static partition.
 | Schema / table / indexes | README Architecture, `docs/API.md` |
 | Error codes | `docs/API.md` → `## Error codes` table |
 | `peerDependencies.convex` version | `llms.txt` context line (`convex@^X.Y.Z`), `docs/API.md` Compatibility line, README Installation peer note |
-| `peerDependencies.nodemailer` floor (optional SMTP peer) | `docs/API.md` Compatibility + SMTP section, `llms.txt` context, README Installation + Transports, CHANGELOG |
+| `peerDependencies.nodemailer` range (optional SMTP peer) | `docs/API.md` Compatibility + SMTP section, `llms.txt` context, README Installation + Transports, CHANGELOG |
 | SMTP transport API (`sendViaSmtp` / `validateSmtpConfig` / `toMailOptions` / `createSmtpSender` / `SmtpConfig` / `SmtpMessage`) | README Transports, `docs/API.md` SMTP section, `llms.txt` context |
 | JMAP transport API (`sendViaJmap` / `discoverJmapSession` / `createJmapSender` / `JmapConfig` / `JmapMessage`) | README Transports, `docs/API.md` JMAP section, `vitest.config.mts` `coverage.include`, `llms.txt` context |
 | `coverage.include` (a new covered source file) | `vitest.config.mts` include list; a new file without a test fails CI |
