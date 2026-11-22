@@ -43,3 +43,4 @@ example/convex/_generated/ai/
 
 # AGENTS.md is the only agent instruction surface
 .claude/
+.privacy-denylist.local
