@@ -1,0 +1,15 @@
+# Regexes matched against "path:line:token" of each denylist hit. Keep entries narrow
+# and anchor them: a token is allowed only if the whole token matches.
+
+# Addresses on reserved or noreply domains, and the SSH remote user
+:[0-9]+:[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.(test|invalid|example)$
+:[0-9]+:[A-Za-z0-9._%+-]+@example\.(com|org|net)$
+:[0-9]+:[A-Za-z0-9._%+-]+@users\.noreply\.github\.com$
+:[0-9]+:noreply@github\.com$
+:[0-9]+:git@github\.com$
+
+# CI runner home directories
+:[0-9]+:.?/home/(runner|user)$
+
+# Fictional fixture addresses in docs, examples, and source
+^(README\.md|docs/API\.md|example/convex/example(\.test)?\.ts|src/client/index\.ts|src/jmap/send(\.test)?\.ts|src/smtp/send(\.test)?\.ts):[0-9]+:[A-Za-z0-9._%+-]+@(x|app)\.com$
