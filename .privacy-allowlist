@@ -13,3 +13,4 @@
 
 # Fictional fixture addresses in docs, examples, and source
 ^(README\.md|docs/API\.md|example/convex/example(\.test)?\.ts|src/client/index\.ts|src/jmap/send(\.test)?\.ts|src/smtp/send(\.test)?\.ts):[0-9]+:[A-Za-z0-9._%+-]+@(x|app)\.com$
+^(dist/client/index|dist/jmap/send)\.(js|d\.ts|d\.ts\.map):[0-9]+:[A-Za-z0-9._%+-]+@(x|app)\.com$
