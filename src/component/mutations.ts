@@ -10,6 +10,15 @@ import {
 } from "../shared.js";
 import { jsonValue } from "./validators.js";
 
+function truncateError(error: string): string {
+  if (error.length <= MAX_ERROR_LENGTH) {
+    return error;
+  }
+  const code = error.charCodeAt(MAX_ERROR_LENGTH - 1);
+  const end = code >= 0xd800 && code <= 0xdbff ? MAX_ERROR_LENGTH - 1 : MAX_ERROR_LENGTH;
+  return error.slice(0, end);
+}
+
 function assertMaxLength(name: string, value: string | undefined) {
   if (value !== undefined && value.length > MAX_ID_LENGTH) {
     throw new ConvexError({
@@ -255,7 +264,7 @@ export const markFailed = mutation({
     const status = retried ? ("queued" as const) : ("failed" as const);
     await ctx.db.patch("messages", msg._id, {
       status,
-      error: args.error?.slice(0, MAX_ERROR_LENGTH),
+      error: args.error === undefined ? undefined : truncateError(args.error),
       updatedAt: Date.now(),
     });
     return { status, retried };

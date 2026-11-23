@@ -606,6 +606,25 @@ describe("email — prune (bounded + self-rescheduling)", () => {
     expect((await t.query(api.example.get, { messageId: "m_pid" }))?.providerId).toBe("p1");
   });
 
+  test("markFailed truncation never splits a surrogate pair", async () => {
+    const t = setup();
+    await t.mutation(api.example.enqueue, {
+      messageId: "m_emoji",
+      to: "user@x.com",
+      from: "no-reply@app.com",
+      transport: "jmap",
+    });
+    await t.mutation(api.example.markSending, { messageId: "m_emoji" });
+    const prefix = "a".repeat(MAX_ERROR_LENGTH - 1);
+    await t.mutation(api.example.markFailed, {
+      messageId: "m_emoji",
+      error: `${prefix}\u{1F600}tail`,
+    });
+    const msg = await t.query(api.example.get, { messageId: "m_emoji" });
+    expect(msg?.error).toBe(prefix);
+    expect(msg?.status).toBe("queued");
+  });
+
   test("markFailed truncates an oversized error instead of stranding the message", async () => {
     const t = setup();
     await t.mutation(api.example.enqueue, {
