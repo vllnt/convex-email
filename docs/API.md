@@ -141,7 +141,7 @@ Coded `ConvexError`s thrown by the component (`error.data.code`):
 | -------------------- | --------------------------------------- | --------------------------------------------------------------------------------- |
 | `INVALID_BATCH`      | `prune`                                 | Batch must be a finite integer from 1–500.                                        |
 | `INVALID_BEFORE`     | `prune`                                 | The cutoff must be finite.                                                        |
-| `INVALID_ARGUMENT`   | `enqueue`                               | `messageId`, `to`, `from`, `transport`, or a supplied `idempotencyKey` is empty.  |
+| `INVALID_ARGUMENT`   | `enqueue`, `markSent`                   | `messageId`, `to`, `from`, `transport`, or a supplied `idempotencyKey` is empty; an id (`messageId`, `transport`, `idempotencyKey`, `subjectRef`, `providerId`) is over 512 characters; `to`/`from` is over 4096 characters. A `markFailed` `error` over 2048 characters is truncated, not rejected. |
 | `INVALID_MAX_ATTEMPTS` | `enqueue`                             | `maxAttempts` must be a positive integer.                                          |
 | `DUPLICATE_MESSAGE`  | `enqueue`                               | A message with this `messageId` already exists (and no `idempotencyKey` matched). |
 | `NOT_FOUND`          | `markSending`, `markSent`, `markFailed` | No message has this `messageId`.                                                  |

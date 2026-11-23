@@ -4,6 +4,11 @@ import { api } from "./_generated/api";
 import schema from "./schema";
 import { register } from "../../src/test";
 import crons, { PRUNE_BATCH, PRUNE_INTERVAL } from "../../src/component/crons";
+import {
+  MAX_ADDRESS_LENGTH,
+  MAX_ERROR_LENGTH,
+  MAX_ID_LENGTH,
+} from "../../src/shared";
 
 const modules = import.meta.glob("./**/*.ts");
 
@@ -552,6 +557,91 @@ describe("email — prune (bounded + self-rescheduling)", () => {
       expect(await t.query(api.example.get, { messageId: "m1" })).toBeNull();
     },
   );
+
+  test.each([
+    ["messageId", MAX_ID_LENGTH],
+    ["to", MAX_ADDRESS_LENGTH],
+    ["from", MAX_ADDRESS_LENGTH],
+    ["transport", MAX_ID_LENGTH],
+    ["idempotencyKey", MAX_ID_LENGTH],
+    ["subjectRef", MAX_ID_LENGTH],
+  ] as const)("enqueue caps %s at %d characters", async (field, max) => {
+    const t = setup();
+    const base = {
+      messageId: "m1",
+      to: "user@x.com",
+      from: "no-reply@app.com",
+      transport: "jmap",
+    };
+    await expect(
+      t.mutation(api.example.enqueue, { ...base, [field]: "a".repeat(max + 1) }),
+    ).rejects.toThrow(/INVALID_ARGUMENT/);
+    expect(await t.query(api.example.get, { messageId: "m1" })).toBeNull();
+    const ok = { ...base, [field]: "a".repeat(max) };
+    await t.mutation(api.example.enqueue, ok);
+    expect(await t.query(api.example.get, { messageId: ok.messageId })).not.toBeNull();
+  });
+
+  test("markSent rejects an oversized providerId but a replayed success stays a no-op", async () => {
+    const t = setup();
+    await t.mutation(api.example.enqueue, {
+      messageId: "m_pid",
+      to: "user@x.com",
+      from: "no-reply@app.com",
+      transport: "jmap",
+    });
+    await t.mutation(api.example.markSending, { messageId: "m_pid" });
+    await expect(
+      t.mutation(api.example.markSent, {
+        messageId: "m_pid",
+        providerId: "p".repeat(MAX_ID_LENGTH + 1),
+      }),
+    ).rejects.toThrow(/INVALID_ARGUMENT/);
+    expect((await t.query(api.example.get, { messageId: "m_pid" }))?.status).toBe("sending");
+    await t.mutation(api.example.markSent, { messageId: "m_pid", providerId: "p1" });
+    await t.mutation(api.example.markSent, {
+      messageId: "m_pid",
+      providerId: "p".repeat(MAX_ID_LENGTH + 1),
+    });
+    expect((await t.query(api.example.get, { messageId: "m_pid" }))?.providerId).toBe("p1");
+  });
+
+  test("markFailed truncation never splits a surrogate pair", async () => {
+    const t = setup();
+    await t.mutation(api.example.enqueue, {
+      messageId: "m_emoji",
+      to: "user@x.com",
+      from: "no-reply@app.com",
+      transport: "jmap",
+    });
+    await t.mutation(api.example.markSending, { messageId: "m_emoji" });
+    const prefix = "a".repeat(MAX_ERROR_LENGTH - 1);
+    await t.mutation(api.example.markFailed, {
+      messageId: "m_emoji",
+      error: `${prefix}\u{1F600}tail`,
+    });
+    const msg = await t.query(api.example.get, { messageId: "m_emoji" });
+    expect(msg?.error).toBe(prefix);
+    expect(msg?.status).toBe("queued");
+  });
+
+  test("markFailed truncates an oversized error instead of stranding the message", async () => {
+    const t = setup();
+    await t.mutation(api.example.enqueue, {
+      messageId: "m_err",
+      to: "user@x.com",
+      from: "no-reply@app.com",
+      transport: "jmap",
+    });
+    await t.mutation(api.example.markSending, { messageId: "m_err" });
+    const result = await t.mutation(api.example.markFailed, {
+      messageId: "m_err",
+      error: "e".repeat(MAX_ERROR_LENGTH * 4),
+    });
+    expect(result).toEqual({ status: "queued", retried: true });
+    const msg = await t.query(api.example.get, { messageId: "m_err" });
+    expect(msg?.error).toBe("e".repeat(MAX_ERROR_LENGTH));
+  });
 
   test.each([Number.NaN, 0, -1, 1.5])(
     "enqueue rejects invalid maxAttempts %s",

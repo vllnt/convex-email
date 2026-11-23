@@ -40,3 +40,9 @@ export const DEFAULT_RETENTION_MS = 2_592_000_000;
 /** Default page size for a `prune` pass before the sweep self-reschedules. */
 export const DEFAULT_PRUNE_BATCH = 200;
 export const MAX_PRUNE_BATCH = 500;
+
+export const MAX_ID_LENGTH = 512;
+
+export const MAX_ADDRESS_LENGTH = 4096;
+
+export const MAX_ERROR_LENGTH = 2048;
