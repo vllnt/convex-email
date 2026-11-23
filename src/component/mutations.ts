@@ -1,8 +1,23 @@
 import { ConvexError, v } from "convex/values";
 import { api } from "./_generated/api.js";
 import { mutation } from "./_generated/server.js";
-import { DEFAULT_RETENTION_MS, MAX_PRUNE_BATCH } from "../shared.js";
+import {
+  DEFAULT_RETENTION_MS,
+  MAX_ADDRESS_LENGTH,
+  MAX_ERROR_LENGTH,
+  MAX_ID_LENGTH,
+  MAX_PRUNE_BATCH,
+} from "../shared.js";
 import { jsonValue } from "./validators.js";
+
+function assertMaxLength(name: string, value: string | undefined) {
+  if (value !== undefined && value.length > MAX_ID_LENGTH) {
+    throw new ConvexError({
+      code: "INVALID_ARGUMENT",
+      message: `${name} must be at most ${MAX_ID_LENGTH} characters`,
+    });
+  }
+}
 
 /**
  * Enqueue an outbound message and return its id immediately — the durable queue
@@ -39,21 +54,28 @@ export const enqueue = mutation({
   },
   returns: v.object({ messageId: v.string(), deduplicated: v.boolean() }),
   handler: async (ctx, args) => {
-    const fields: Array<[string, string | undefined]> = [
-      ["messageId", args.messageId],
-      ["to", args.to],
-      ["from", args.from],
-      ["transport", args.transport],
-      ["idempotencyKey", args.idempotencyKey],
+    const fields: Array<[string, string | undefined, number]> = [
+      ["messageId", args.messageId, MAX_ID_LENGTH],
+      ["to", args.to, MAX_ADDRESS_LENGTH],
+      ["from", args.from, MAX_ADDRESS_LENGTH],
+      ["transport", args.transport, MAX_ID_LENGTH],
+      ["idempotencyKey", args.idempotencyKey, MAX_ID_LENGTH],
     ];
-    for (const [name, value] of fields) {
+    for (const [name, value, max] of fields) {
       if (value === "") {
         throw new ConvexError({
           code: "INVALID_ARGUMENT",
           message: `${name} must not be empty`,
         });
       }
+      if (value !== undefined && value.length > max) {
+        throw new ConvexError({
+          code: "INVALID_ARGUMENT",
+          message: `${name} must be at most ${max} characters`,
+        });
+      }
     }
+    assertMaxLength("subjectRef", args.subjectRef);
     if (!Number.isInteger(args.maxAttempts) || args.maxAttempts < 1) {
       throw new ConvexError({
         code: "INVALID_MAX_ATTEMPTS",
@@ -178,6 +200,7 @@ export const markSent = mutation({
     if (msg.status === "sent") {
       return null;
     }
+    assertMaxLength("providerId", args.providerId);
     if (msg.status === "failed") {
       throw new ConvexError({
         code: "TERMINAL_STATE",
@@ -232,7 +255,7 @@ export const markFailed = mutation({
     const status = retried ? ("queued" as const) : ("failed" as const);
     await ctx.db.patch("messages", msg._id, {
       status,
-      error: args.error,
+      error: args.error?.slice(0, MAX_ERROR_LENGTH),
       updatedAt: Date.now(),
     });
     return { status, retried };

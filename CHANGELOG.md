@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- `enqueue` and `markSent` reject oversized input with `INVALID_ARGUMENT`: ids (`messageId`,
+  `transport`, `idempotencyKey`, `subjectRef`, `providerId`) over 512 characters and `to`/`from`
+  over 4096 characters. `markFailed` truncates an `error` over 2048 characters instead of
+  rejecting it, so a long provider error never leaves a message stuck in `sending`.
+
 - `enqueue` rejects an empty `messageId`, `to`, `from`, `transport` or `idempotencyKey` with
   `ConvexError({ code: "INVALID_ARGUMENT" })`, and a `maxAttempts` that is not a positive
   integer with `ConvexError({ code: "INVALID_MAX_ATTEMPTS" })`.

@@ -40,3 +40,12 @@ export const DEFAULT_RETENTION_MS = 2_592_000_000;
 /** Default page size for a `prune` pass before the sweep self-reschedules. */
 export const DEFAULT_PRUNE_BATCH = 200;
 export const MAX_PRUNE_BATCH = 500;
+
+/** Maximum length of a host-supplied id (`messageId`, `idempotencyKey`, `subjectRef`, `transport`, `providerId`). */
+export const MAX_ID_LENGTH = 512;
+
+/** Maximum length of a `to` or `from` envelope value. */
+export const MAX_ADDRESS_LENGTH = 4096;
+
+/** A `markFailed` error longer than this is truncated, never rejected, so a failure is always recorded. */
+export const MAX_ERROR_LENGTH = 2048;
