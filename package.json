@@ -8,8 +8,12 @@
   "files": [
     "dist",
     "src",
+    "docs/API.md",
+    "CHANGELOG.md",
+    "llms.txt",
     "!src/**/*.test.*",
-    "!src/**/*.spec.*"],
+    "!src/**/*.spec.*"
+  ],
   "exports": {
     "./package.json": "./package.json",
     ".": {
@@ -48,13 +52,14 @@
     "build:clean": "rm -rf dist *.tsbuildinfo && pnpm build:codegen",
     "typecheck": "tsc --noEmit --incremental --tsBuildInfoFile node_modules/.cache/tsc/typecheck.tsbuildinfo",
     "typecheck:ci": "tsc --noEmit --incremental --tsBuildInfoFile node_modules/.cache/tsc/typecheck-ci.tsbuildinfo --project tsconfig.ci.json",
-    "lint": "pnpm check:agents && eslint --cache --cache-location node_modules/.cache/eslint/ .",
+    "lint": "pnpm check:agents && pnpm check:package && eslint --cache --cache-location node_modules/.cache/eslint/ .",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest --typecheck --clearScreen false",
     "test:coverage": "vitest run --coverage --coverage.reporter=text",
     "generate:llms": "node scripts/generate-llms.mjs",
     "preversion": "pnpm install --frozen-lockfile && pnpm build && pnpm test:coverage && pnpm typecheck && pnpm generate:llms",
     "check:agents": "node -e \"const f=require('node:fs');if(!f.existsSync('AGENTS.md')||f.existsSync('CLAUDE.md')||f.existsSync('.claude'))process.exit(1)\"",
+    "check:package": "node scripts/test-check-package-docs.mjs && node scripts/check-package-docs.mjs",
     "codegen": "pnpm convex codegen --component-dir ./src/component"
   },
   "peerDependencies": {
@@ -95,7 +100,7 @@
       "handlebars@<4.7.10": "4.7.10"
     }
   },
-  "homepage": "https://github.com/vllnt/convex-email#readme",
+  "homepage": "https://oss.vllnt.com/packages/convex-email",
   "bugs": {
     "url": "https://github.com/vllnt/convex-email/issues"
   },
