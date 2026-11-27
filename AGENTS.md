@@ -190,6 +190,7 @@ second instance (`app.use(component, { name })`) for a static partition.
 | JMAP transport API (`sendViaJmap` / `discoverJmapSession` / `createJmapSender` / `JmapConfig` / `JmapMessage`) | README Transports, `docs/API.md` JMAP section, `vitest.config.mts` `coverage.include`, `llms.txt` context |
 | `coverage.include` (a new covered source file) | `vitest.config.mts` include list; a new file without a test fails CI |
 | Lifecycle / state machine | `docs/API.md` mutation sections, Key design decisions above |
+| Shipped files (`package.json` `files`, a new bundled doc) | `REQUIRED_FILES` in `scripts/check-package-docs.mjs` (run by `pnpm lint`), `publish.yml` push `paths`, README "For coding agents" note |
 | Any change to `llms.txt` | `pnpm generate:llms` validates the index and its links (it generates nothing; `llms.txt` is the only LLM index) |
 
 Grep old values before committing (e.g. after a `peerDependencies.convex` bump, `git grep "1.41.0"` → only the new range survives).

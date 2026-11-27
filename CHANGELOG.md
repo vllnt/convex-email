@@ -6,8 +6,25 @@ All notable changes to this project are documented here. The format is based on
 
 ## [0.1.1] - Unreleased
 
+### Added
+
+- The npm tarball now ships `docs/API.md`, `CHANGELOG.md` and `llms.txt` next to `README.md`, so
+  coding agents can read docs that match the installed version from
+  `node_modules/@vllnt/convex-email/`. `README.md` and `llms.txt` gain a "For coding agents" note,
+  and the README a "Related packages" section.
+- `docs/API.md` now has an entry-point map and documents the `@vllnt/convex-email/test` helper,
+  `JmapDiscoverOptions` and the SMTP and JMAP sender and transport types.
+- `pnpm lint` (run by CI and before every publish) fails when a required file (`README.md`,
+  `LICENSE`, `CHANGELOG.md`, `llms.txt`, `docs/API.md`) is missing from the packed tarball, or
+  when an inline Markdown link in `llms.txt`, `README.md` or `docs/API.md` points outside the
+  tarball or uses a GitHub URL into this repository for a shipped file
+  (`scripts/check-package-docs.mjs`).
+
 ### Fixed
 
+- Shipped TSDoc: the `Email` and `Parser` docs no longer suggest a `convex/values`
+  validator's `.parse` (it has none), and `prune` documents its real default cutoff (30 days
+  before the server clock).
 - `enqueue` rejects an empty `messageId`, `to`, `from`, `transport` or `idempotencyKey` with
   `ConvexError({ code: "INVALID_ARGUMENT" })`, and a `maxAttempts` that is not a positive
   integer with `ConvexError({ code: "INVALID_MAX_ATTEMPTS" })`.
@@ -16,6 +33,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- `package.json` `homepage` is now `https://oss.vllnt.com/packages/convex-email`. `llms.txt` links
+  to shipped files are relative; links to files outside the package are absolute GitHub URLs.
+- The Publish workflow publishes a `canary` on every push to `main` that touches the package or its
+  shipped docs, with no repository-variable gate. A canary is published under
+  the `canary` dist-tag only and never moves `latest`.
 - Adopt pnpm 10 with a release-age gate; releases are published only from CI with npm
   trusted publishing and provenance.
 - The optional `nodemailer` peer range is now `^8.0.4 || ^9.0.0 || ^10.0.0` (was `^8.0.4`),

@@ -53,8 +53,15 @@ The queue core has zero third-party runtime deps. `nodemailer`
 transport. The JMAP transport (`@vllnt/convex-email/jmap`) is `fetch`-based and
 needs no extra dependency.
 
-This README follows `main` and the canary channel; `latest` is the separate
-stable release. Pin an exact canary version for reproducible installs.
+This README ships inside the package and describes the installed version; the
+copy on GitHub `main` can be ahead of `latest`. Pin an exact canary version for
+reproducible installs.
+
+## For coding agents
+
+The docs are bundled at `node_modules/@vllnt/convex-email/docs/`, next to
+`README.md`, `CHANGELOG.md` and `llms.txt`. They match the installed version.
+Read them before writing code against this package.
 
 ## Quick start
 
@@ -243,22 +250,34 @@ register(t);
 heading and local links without generating a source bundle.
 
 [API reference](docs/API.md) · [LLM index](llms.txt) ·
-[Security policy](SECURITY.md)
+[Security policy](https://github.com/vllnt/convex-email/blob/main/SECURITY.md)
+
+## Related packages
+
+Separate `@vllnt` Convex components; this one never calls them. The host wires
+any of them in its own code.
+
+| Package                                                                        | Use it when                                                                                                             |
+| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| [`@vllnt/convex-suppression`](https://github.com/vllnt/convex-suppression)     | You keep a do-not-contact list. Check it before enqueueing so a suppressed address is never queued.                     |
+| [`@vllnt/convex-consent`](https://github.com/vllnt/convex-consent)             | You must record, withdraw and gate consent per subject and purpose before sending permission-based mail.                |
+| [`@vllnt/convex-notifications`](https://github.com/vllnt/convex-notifications) | The message is an in-app inbox item with read/unread state, not an email.                                               |
+| [`@vllnt/convex-idempotency`](https://github.com/vllnt/convex-idempotency)     | You need an idempotency-key ledger for other retried operations. This package's `idempotencyKey` only dedups `enqueue`. |
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+See
+[CONTRIBUTING.md](https://github.com/vllnt/convex-email/blob/main/CONTRIBUTING.md).
 
 ## Author
 
 Built by [bntvllnt](https://github.com/bntvllnt) ·
 [bntvllnt.com](https://bntvllnt.com) · [X @bntvllnt](https://x.com/bntvllnt)
 
-Part of the [@vllnt](https://github.com/vllnt) Convex component fleet —
-[vllnt.com](https://vllnt.com)
-
 If this is useful, [sponsor the work](https://github.com/sponsors/bntvllnt).
 
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+Part of vllnt oss: https://oss.vllnt.com

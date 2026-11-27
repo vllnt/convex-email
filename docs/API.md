@@ -6,6 +6,17 @@
 [JMAP transport](#jmap-transport-optional--vllntconvex-emailjmap) is
 `fetch`-based and needs no extra dependency.
 
+## Entry points
+
+| Import                                      | Provides                                                                                                                                                  |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@vllnt/convex-email`                       | The `Email<TPayload>` client and the types `EmailComponent`, `EmailOptions`, `EnqueueOptions`, `EnqueueResult`, `MarkFailedResult`, `MessageStatus`, `MessageView`, `Parser`. |
+| `@vllnt/convex-email/convex.config`         | The component definition (default export) for `app.use(...)`.                                                                                             |
+| `@vllnt/convex-email/_generated/component`  | The `ComponentApi` type of the mounted component.                                                                                                         |
+| `@vllnt/convex-email/smtp`                  | The optional [SMTP transport](#smtp-transport-optional--vllntconvex-emailsmtp).                                                                           |
+| `@vllnt/convex-email/jmap`                  | The optional [JMAP transport](#jmap-transport-optional--vllntconvex-emailjmap).                                                                           |
+| `@vllnt/convex-email/test`                  | `register` for [`convex-test`](#test-helper--vllntconvex-emailtest).                                                                                      |
+
 Construct the client with the mounted component and optional host config:
 
 ```ts
@@ -203,25 +214,42 @@ interface SmtpMessage {
   replyTo?: string;
   headers?: Record<string, string>;
 }
+interface SmtpMailOptions {
+  // what toMailOptions returns: SmtpMessage with `from` resolved
+  to: string;
+  from: string;
+  subject?: string;
+  text?: string;
+  html?: string;
+  replyTo?: string;
+  headers?: Record<string, string>;
+}
+interface SmtpSendInfo {
+  // the raw result of transport.sendMail
+  messageId?: string;
+  accepted?: ReadonlyArray<string | { address: string }>;
+  rejected?: ReadonlyArray<string | { address: string }>;
+}
 interface SmtpSendResult {
   messageId: string; // the SMTP handle — store as the queue providerId
   accepted: string[];
   rejected: string[];
 }
 interface SmtpTransport {
-  sendMail(options): Promise<SmtpSendInfo>;
+  sendMail(options: SmtpMailOptions): Promise<SmtpSendInfo>;
 } // the injected seam
+type SmtpSender = (message: SmtpMessage) => Promise<SmtpSendResult>; // what createSmtpSender returns
 ```
 
 ### `validateSmtpConfig(config) → SmtpConfig & { secure: boolean }` (pure)
 
-Validate a host {@link SmtpConfig} and resolve `secure` (defaults to `true` for
+Validate a host `SmtpConfig` and resolve `secure` (defaults to `true` for
 port 465, else `false`). Throws a plain `Error` on an invalid host, port (must
 be an integer in 1..65535), or auth block. No I/O.
 
 ### `toMailOptions(message, config) → SmtpMailOptions` (pure)
 
-Build the transport `sendMail` options from a {@link SmtpMessage}: resolve
+Build the transport `sendMail` options from a `SmtpMessage`: resolve
 `from` (message → `config.from`), require one of `text`/`html`, and reject CR/LF
 injection in `to`/`from`/`replyTo`/`subject`/`headers`. Throws on an invalid
 message. No I/O.
@@ -263,9 +291,11 @@ await email.markSent(ctx, id, { providerId: messageId });
 
 The host's flush action: `listByStatus("queued")` → for each, `markSending` →
 `send(...)` → `markSent({ providerId })` or `markFailed({ error })`.
-`markFailed` re-queues until the attempt budget is spent. See
-`example/convex/example.ts` (`flushQueuedOverSmtp`) for the full loop exercised
-under `convex-test` with a fake transport.
+`markFailed` re-queues until the attempt budget is spent. The repository's
+example app (`example/convex/example.ts`, `flushQueuedOverSmtp`; not part of the
+npm package) has the full loop, exercised under `convex-test` with a fake
+transport:
+https://github.com/vllnt/convex-email/blob/main/example/convex/example.ts
 
 ## JMAP transport (optional) — `@vllnt/convex-email/jmap`
 
@@ -303,7 +333,23 @@ interface JmapSendResult {
   messageId: string; // the EmailSubmission id — store as the queue providerId
   emailId: string; // the created Email id
 }
+interface JmapDiscoverOptions {
+  sessionUrl: string; // the JMAP session resource, e.g. https://host/.well-known/jmap
+  token: string; // bearer access token
+  from?: string; // pick the identity with this address; else the first identity
+}
+interface JmapRequestInit {
+  method: string;
+  headers: Record<string, string>;
+  body?: string;
+}
+interface JmapResponse {
+  ok: boolean;
+  status: number;
+  json(): Promise<unknown>;
+}
 type JmapFetch = (url: string, init: JmapRequestInit) => Promise<JmapResponse>; // injected fetch
+type JmapSender = (message: JmapMessage) => Promise<JmapSendResult>; // what createJmapSender returns
 ```
 
 ### `discoverJmapSession(fetchFn, opts) → Promise<JmapConfig>`
@@ -344,14 +390,49 @@ const { messageId } = await send({ to, from, subject, html, text });
 await email.markSent(ctx, id, { providerId: messageId });
 ```
 
-The lower-level pure builders are also exported: `validateJmapConfig`,
-`buildEmailCreate`, `buildSubmitRequest`, `parseSubmitResponse`.
+The lower-level pure builders are also exported (no I/O; each throws a plain
+`Error` on invalid input):
+
+- `validateJmapConfig(config: JmapConfig) → JmapConfig`: checks that
+  `endpoint`, `token`, `accountId`, `identityId` and `mailboxId` are non-empty
+  strings and returns the config unchanged.
+- `buildEmailCreate(message: JmapMessage, config: Pick<JmapConfig, "from" | "mailboxId">) → { email: Record<string, unknown>; envelope: { mailFrom: { email: string }; rcptTo: Array<{ email: string }> } }`:
+  the JMAP `Email/set` create object and the submission envelope. Resolves
+  `from`, requires one of `text`/`html`, and rejects CR/LF. The return type is
+  not exported by name.
+- `buildSubmitRequest(message: JmapMessage, config: JmapConfig) → { using: string[]; methodCalls: unknown[] }`:
+  the full request body, an `Email/set` create (creation id `draft`) followed by
+  an `EmailSubmission/set` that references `#draft`.
+- `parseSubmitResponse(json: unknown) → JmapSendResult`: rejects method-level
+  errors and `notCreated` entries, then reads the created `Email` id and the
+  `EmailSubmission` id.
 
 ### Wiring to the queue (and routing both transports)
 
 Same loop as SMTP: `listByStatus("queued")` → `markSending` → `send(...)` →
 `markSent({ providerId })` / `markFailed`. To support **both** SMTP and JMAP off
 one queue, route per message by its stored `transport` tag — a `senders` map
-keyed by `"smtp"` / `"jmap"` picks the adapter. See `example/convex/example.ts`
-(`flushQueuedOverJmap`, `flushQueuedRouted`) for both exercised under
-`convex-test` with a fake `fetch`.
+keyed by `"smtp"` / `"jmap"` picks the adapter. The repository's example app
+(`example/convex/example.ts`: `flushQueuedOverJmap`, `flushQueuedRouted`; not
+part of the npm package) exercises both under `convex-test` with a fake `fetch`:
+https://github.com/vllnt/convex-email/blob/main/example/convex/example.ts
+
+## Test helper — `@vllnt/convex-email/test`
+
+### `register(t, name = "email") → void`
+
+Mount the component in a [`convex-test`](https://docs.convex.dev/testing)
+instance so an app can test its own integration. `name` must match the name the
+app mounts the component under (default `"email"`). The entry ships as
+TypeScript source, so the consuming app needs `convex-test` and `vitest` (with
+Vite's `import.meta.glob`):
+
+```ts
+/// <reference types="vite/client" />
+import { convexTest } from "convex-test";
+import { register } from "@vllnt/convex-email/test";
+import schema from "./schema";
+
+const t = convexTest(schema, import.meta.glob("./**/*.ts"));
+register(t);
+```
