@@ -131,7 +131,57 @@ try {
       allFiles,
     ),
     1,
-    "use ./docs/API.md",
+    "use a relative link to docs/API.md",
+  );
+  expect(
+    "raw.githubusercontent.com URL to a shipped file fails",
+    run(
+      {
+        ...COMPLETE,
+        "llms.txt":
+          "# f\n\n- [Changelog](https://raw.githubusercontent.com/example/fixture/main/CHANGELOG.md)\n",
+      },
+      allFiles,
+    ),
+    1,
+    "use a relative link to CHANGELOG.md",
+  );
+  expect(
+    "GitHub tree URL to a shipped file fails",
+    run(
+      {
+        ...COMPLETE,
+        "llms.txt":
+          "# f\n\n- [API](https://github.com/example/fixture/tree/main/docs/API.md)\n",
+      },
+      allFiles,
+    ),
+    1,
+    "use a relative link to docs/API.md",
+  );
+  expect(
+    "broken relative link in README.md fails",
+    run({ ...COMPLETE, "README.md": "# f\n\n[x](./missing.md)\n" }, allFiles),
+    1,
+    "README.md link ./missing.md does not resolve",
+  );
+  expect(
+    "docs/API.md links resolve from docs/",
+    run(
+      {
+        ...COMPLETE,
+        "docs/API.md": "# API\n\n[Changelog](../CHANGELOG.md) [Top](#api)\n",
+      },
+      allFiles,
+    ),
+    0,
+  );
+  const { LICENSE: _license, ...withoutLicense } = COMPLETE;
+  expect(
+    "missing LICENSE fails",
+    run(withoutLicense, allFiles),
+    1,
+    "required file missing from the tarball: LICENSE",
   );
   expect(
     "GitHub URL to a file outside the tarball passes",

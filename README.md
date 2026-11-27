@@ -254,8 +254,8 @@ heading and local links without generating a source bundle.
 
 ## Related packages
 
-Separate `@vllnt` Convex components. This one never calls them: the host checks
-them before `enqueue`.
+Separate `@vllnt` Convex components; this one never calls them. The host wires
+any of them in its own code.
 
 | Package                                                                        | Use it when                                                                                                             |
 | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |

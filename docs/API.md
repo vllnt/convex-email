@@ -243,13 +243,13 @@ type SmtpSender = (message: SmtpMessage) => Promise<SmtpSendResult>; // what cre
 
 ### `validateSmtpConfig(config) → SmtpConfig & { secure: boolean }` (pure)
 
-Validate a host {@link SmtpConfig} and resolve `secure` (defaults to `true` for
+Validate a host `SmtpConfig` and resolve `secure` (defaults to `true` for
 port 465, else `false`). Throws a plain `Error` on an invalid host, port (must
 be an integer in 1..65535), or auth block. No I/O.
 
 ### `toMailOptions(message, config) → SmtpMailOptions` (pure)
 
-Build the transport `sendMail` options from a {@link SmtpMessage}: resolve
+Build the transport `sendMail` options from a `SmtpMessage`: resolve
 `from` (message → `config.from`), require one of `text`/`html`, and reject CR/LF
 injection in `to`/`from`/`replyTo`/`subject`/`headers`. Throws on an invalid
 message. No I/O.
@@ -390,8 +390,22 @@ const { messageId } = await send({ to, from, subject, html, text });
 await email.markSent(ctx, id, { providerId: messageId });
 ```
 
-The lower-level pure builders are also exported: `validateJmapConfig`,
-`buildEmailCreate`, `buildSubmitRequest`, `parseSubmitResponse`.
+The lower-level pure builders are also exported (no I/O; each throws a plain
+`Error` on invalid input):
+
+- `validateJmapConfig(config: JmapConfig) → JmapConfig`: checks that
+  `endpoint`, `token`, `accountId`, `identityId` and `mailboxId` are non-empty
+  strings and returns the config unchanged.
+- `buildEmailCreate(message: JmapMessage, config: Pick<JmapConfig, "from" | "mailboxId">) → { email: Record<string, unknown>; envelope: { mailFrom: { email: string }; rcptTo: Array<{ email: string }> } }`:
+  the JMAP `Email/set` create object and the submission envelope. Resolves
+  `from`, requires one of `text`/`html`, and rejects CR/LF. The return type is
+  not exported by name.
+- `buildSubmitRequest(message: JmapMessage, config: JmapConfig) → { using: string[]; methodCalls: unknown[] }`:
+  the full request body, an `Email/set` create (creation id `draft`) followed by
+  an `EmailSubmission/set` that references `#draft`.
+- `parseSubmitResponse(json: unknown) → JmapSendResult`: rejects method-level
+  errors and `notCreated` entries, then reads the created `Email` id and the
+  `EmailSubmission` id.
 
 ### Wiring to the queue (and routing both transports)
 

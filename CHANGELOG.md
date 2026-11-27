@@ -14,9 +14,13 @@ All notable changes to this project are documented here. The format is based on
   and the README a "Related packages" section.
 - `docs/API.md` now has an entry-point map and documents the `@vllnt/convex-email/test` helper,
   `JmapDiscoverOptions` and the SMTP and JMAP sender and transport types.
-- `pnpm lint` (run by CI and before every publish) fails when a required file (`README.md`, `LICENSE`, `CHANGELOG.md`, `llms.txt`,
-  `docs/API.md`) is missing from the packed tarball, or when a link in `llms.txt` to a shipped
-  file is not relative or points outside the tarball (`scripts/check-package-docs.mjs`).
+- `pnpm lint` (run by CI and before every publish) fails when a required file (`README.md`,
+  `LICENSE`, `CHANGELOG.md`, `llms.txt`, `docs/API.md`) is missing from the packed tarball, or
+  when a link in `llms.txt`, `README.md` or `docs/API.md` points outside the tarball or uses a
+  GitHub URL for a shipped file (`scripts/check-package-docs.mjs`).
+- Fix shipped TSDoc: the `Email` and `Parser` docs no longer suggest a `convex/values`
+  validator's `.parse` (it has none), and `prune` documents its real default cutoff (30 days
+  before the server clock).
 
 ### Fixed
 
@@ -31,7 +35,7 @@ All notable changes to this project are documented here. The format is based on
 - `package.json` `homepage` is now `https://oss.vllnt.com/packages/convex-email`. `llms.txt` links
   to shipped files are relative; links to files outside the package are absolute GitHub URLs.
 - The Publish workflow publishes a `canary` on every push to `main` that touches the package or its
-  shipped docs, without the `CANARY_ENABLED` repository variable gate. A canary is published under
+  shipped docs, with no repository-variable gate. A canary is published under
   the `canary` dist-tag only and never moves `latest`.
 - Adopt pnpm 10 with a release-age gate; releases are published only from CI with npm
   trusted publishing and provenance.

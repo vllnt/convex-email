@@ -6,8 +6,9 @@ export type MessageStatus = "queued" | "sending" | "sent" | "failed";
 /**
  * Validates and narrows the opaque stored `payload` to a host type `T` at the
  * client boundary. Receives the raw value the component returned (`unknown`) and
- * MUST return a typed `T` or throw. A `convex/values` validator's `.parse` (or a
- * Zod `.parse`) fits directly; omit it to keep the value unvalidated.
+ * MUST return a typed `T` or throw. A Zod schema's `.parse` fits directly; a
+ * `convex/values` validator has no `.parse`, so write a type guard instead. Omit
+ * it to keep the value unvalidated.
  *
  * @typeParam T - The host's stored message `payload` type.
  */

@@ -16,9 +16,15 @@ const REQUIRED_FILES = [
   "docs/API.md",
 ];
 
-/** A GitHub blob URL on any ref: group 1 is the repository path of the file. */
-const GITHUB_BLOB_URL =
-  /^https:\/\/github\.com\/[^/]+\/[^/]+\/blob\/[^/]+\/(.+)$/;
+/**
+ * A GitHub URL to one file on a branch or tag (`/blob/`, `/tree/`, `/raw/`, or
+ * `raw.githubusercontent.com`). Group 1 is the repository path of the file.
+ */
+const GITHUB_FILE_URL =
+  /^https:\/\/(?:github\.com\/[^/]+\/[^/]+\/(?:blob|tree|raw)|raw\.githubusercontent\.com\/[^/]+\/[^/]+)\/[^/]+\/([^#?]+)/;
+
+/** Shipped Markdown files whose links must resolve inside the tarball. */
+const LINKED_FILES = ["llms.txt", "README.md", "docs/API.md"];
 
 /** A Markdown link target: `](target)`. */
 const MARKDOWN_LINK = /\]\(([^)\s]+)\)/g;
@@ -59,32 +65,35 @@ function listPackedFiles(directory) {
 }
 
 /**
- * Check every link in `llms.txt` against the packed files. A relative link must
- * resolve to a packed file. A GitHub blob URL must not point at a packed file,
- * because that copy follows a branch instead of the installed version.
+ * Check every link in one shipped Markdown file against the packed files. A
+ * relative link, resolved from the file's folder, must reach a packed file. A
+ * GitHub file URL must not point at a packed file, because that copy follows a
+ * branch instead of the installed version.
  *
- * @param {string} index - Contents of `llms.txt`.
+ * @param {string} file - Packed path of the Markdown file.
+ * @param {string} text - Contents of the file.
  * @param {Set<string>} packed - Paths in the tarball.
  * @returns {string[]} One message per bad link.
  */
-function checkLlmsLinks(index, packed) {
+function checkLinks(file, text, packed) {
   const problems = [];
-  for (const [, target] of index.matchAll(MARKDOWN_LINK)) {
+  for (const [, target] of text.matchAll(MARKDOWN_LINK)) {
     if (target.startsWith("#")) continue;
-    const blob = GITHUB_BLOB_URL.exec(target);
-    if (blob !== null) {
-      if (packed.has(posix.normalize(blob[1]))) {
+    const github = GITHUB_FILE_URL.exec(target);
+    if (github !== null) {
+      const shipped = posix.normalize(github[1]);
+      if (packed.has(shipped)) {
         problems.push(
-          `llms.txt link ${target} points at a shipped file; use ./${blob[1]}`,
+          `${file} link ${target} points at a shipped file; use a relative link to ${shipped}`,
         );
       }
       continue;
     }
     if (/^[a-z][a-z0-9+.-]*:/i.test(target)) continue;
-    const path = posix.normalize(target.split("#")[0]);
+    const path = posix.join(posix.dirname(file), target.split("#")[0]);
     if (!packed.has(path)) {
       problems.push(
-        `llms.txt link ${target} does not resolve to a file in the tarball`,
+        `${file} link ${target} does not resolve to a file in the tarball`,
       );
     }
   }
@@ -105,9 +114,10 @@ function checkPackage(directory) {
       problems.push(`required file missing from the tarball: ${required}`);
     }
   }
-  if (packed.has("llms.txt")) {
-    const index = readFileSync(join(directory, "llms.txt"), "utf8");
-    problems.push(...checkLlmsLinks(index, packed));
+  for (const file of LINKED_FILES) {
+    if (!packed.has(file)) continue;
+    const text = readFileSync(join(directory, file), "utf8");
+    problems.push(...checkLinks(file, text, packed));
   }
   return { problems, packed: packed.size };
 }
@@ -119,6 +129,6 @@ if (problems.length > 0) {
   process.exitCode = 1;
 } else {
   console.log(
-    `OK    package docs: ${REQUIRED_FILES.length} required files in a ${packed}-file tarball, llms.txt links resolve`,
+    `OK    package docs: ${REQUIRED_FILES.length} required files in a ${packed}-file tarball, doc links resolve`,
   );
 }

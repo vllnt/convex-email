@@ -242,8 +242,8 @@ export const markFailed = mutation({
 /**
  * Delete up to `batch` terminal messages whose `updatedAt < before`, oldest first
  * — `sent` then `failed`, each via the `by_status_updated` index. `before`
- * defaults to the server clock (`Date.now()`) when omitted, so the built-in cron
- * sweeps exactly the messages terminal-and-stale as of the run. If a full batch
+ * defaults to `Date.now() - DEFAULT_RETENTION_MS` (30 days) when omitted, so the
+ * built-in cron sweeps the messages that went terminal more than 30 days ago. If a full batch
  * was removed there may be more, so the sweep self-reschedules through
  * `ctx.scheduler` until a short batch signals the tail is clean. Idempotent: only
  * ever removes already-terminal, past-retention rows. Queued and sending messages

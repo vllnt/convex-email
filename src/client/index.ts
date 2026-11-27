@@ -131,11 +131,16 @@ interface RunMutationCtx {
  *
  * @example
  * ```ts
- * const email = new Email(components.email, {
- *   payloadValidator: v.object({ subject: v.string(), html: v.string() }).parse,
+ * const email = new Email<{ subject: string }>(components.email, {
+ *   payloadValidator: (value) => {
+ *     if (typeof value !== "object" || value === null || !("subject" in value) || typeof value.subject !== "string") {
+ *       throw new Error("Expected { subject: string }");
+ *     }
+ *     return { subject: value.subject };
+ *   },
  * });
  * const { messageId } = await email.enqueue(ctx, id, "user@x.com", "no-reply@app.com", "jmap", {
- *   payload: { subject: "Hi", html: "<p>Welcome</p>" },
+ *   payload: { subject: "Hi" },
  *   idempotencyKey: `welcome:${userId}`,
  * });
  * // ... the host's transport sender:
@@ -286,7 +291,7 @@ export class Email<TPayload = unknown> {
 
   /**
    * Delete terminal messages whose `updatedAt < before` in bounded batches,
-   * oldest first. `before` defaults to the server clock; `batch` caps each pass
+   * oldest first. `before` defaults to 30 days before the server clock; `batch` caps each pass
    * and the sweep self-reschedules until the tail is clean. Returns the count
    * removed in the first pass. The built-in daily cron drives this automatically.
    */

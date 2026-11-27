@@ -15,6 +15,7 @@ on:
       - "package.json"
       - "pnpm-lock.yaml"
       - "README.md"
+      - "LICENSE"
       - "CHANGELOG.md"
       - "llms.txt"
       - "docs/API.md"
