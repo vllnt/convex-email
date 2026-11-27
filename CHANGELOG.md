@@ -16,14 +16,15 @@ All notable changes to this project are documented here. The format is based on
   `JmapDiscoverOptions` and the SMTP and JMAP sender and transport types.
 - `pnpm lint` (run by CI and before every publish) fails when a required file (`README.md`,
   `LICENSE`, `CHANGELOG.md`, `llms.txt`, `docs/API.md`) is missing from the packed tarball, or
-  when a link in `llms.txt`, `README.md` or `docs/API.md` points outside the tarball or uses a
-  GitHub URL for a shipped file (`scripts/check-package-docs.mjs`).
-- Fix shipped TSDoc: the `Email` and `Parser` docs no longer suggest a `convex/values`
-  validator's `.parse` (it has none), and `prune` documents its real default cutoff (30 days
-  before the server clock).
+  when an inline Markdown link in `llms.txt`, `README.md` or `docs/API.md` points outside the
+  tarball or uses a GitHub URL into this repository for a shipped file
+  (`scripts/check-package-docs.mjs`).
 
 ### Fixed
 
+- Shipped TSDoc: the `Email` and `Parser` docs no longer suggest a `convex/values`
+  validator's `.parse` (it has none), and `prune` documents its real default cutoff (30 days
+  before the server clock).
 - `enqueue` rejects an empty `messageId`, `to`, `from`, `transport` or `idempotencyKey` with
   `ConvexError({ code: "INVALID_ARGUMENT" })`, and a `maxAttempts` that is not a positive
   integer with `ConvexError({ code: "INVALID_MAX_ATTEMPTS" })`.

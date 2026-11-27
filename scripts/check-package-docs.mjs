@@ -18,10 +18,18 @@ const REQUIRED_FILES = [
 
 /**
  * A GitHub URL to one file on a branch or tag (`/blob/`, `/tree/`, `/raw/`, or
- * `raw.githubusercontent.com`). Group 1 is the repository path of the file.
+ * `raw.githubusercontent.com`). Group 1 or 2 is `owner/repo`, group 3 the file
+ * path. Assumes a ref without `/` (such as `main` or `v1.2.3`); a link on a ref
+ * like `refs/heads/main` or `feature/x` is not recognised as a shipped file.
  */
 const GITHUB_FILE_URL =
-  /^https:\/\/(?:github\.com\/[^/]+\/[^/]+\/(?:blob|tree|raw)|raw\.githubusercontent\.com\/[^/]+\/[^/]+)\/[^/]+\/([^#?]+)/;
+  /^https:\/\/(?:github\.com\/([^/]+\/[^/]+)\/(?:blob|tree|raw)|raw\.githubusercontent\.com\/([^/]+\/[^/]+))\/[^/]+\/([^#?]+)/;
+
+/** `owner/repo` in a GitHub repository URL. */
+const GITHUB_REPOSITORY = /github\.com[/:]([^/]+\/[^/#?]+?)(?:\.git)?\/?$/;
+
+/** Fenced code blocks and inline code spans, whose link syntax is only an example. */
+const CODE = /```[\s\S]*?```|`[^`\n]*`/g;
 
 /** Shipped Markdown files whose links must resolve inside the tarball. */
 const LINKED_FILES = ["llms.txt", "README.md", "docs/API.md"];
@@ -65,24 +73,28 @@ function listPackedFiles(directory) {
 }
 
 /**
- * Check every link in one shipped Markdown file against the packed files. A
- * relative link, resolved from the file's folder, must reach a packed file. A
- * GitHub file URL must not point at a packed file, because that copy follows a
- * branch instead of the installed version.
+ * Check every inline link in one shipped Markdown file against the packed files,
+ * ignoring code. A relative link, resolved from the file's folder, must reach a
+ * packed file. A GitHub file URL into this package's own repository must not
+ * point at a packed file, because that copy follows a branch instead of the
+ * installed version.
  *
  * @param {string} file - Packed path of the Markdown file.
  * @param {string} text - Contents of the file.
  * @param {Set<string>} packed - Paths in the tarball.
+ * @param {string | undefined} repository - This package's `owner/repo`, if known.
  * @returns {string[]} One message per bad link.
  */
-function checkLinks(file, text, packed) {
+function checkLinks(file, text, packed, repository) {
   const problems = [];
-  for (const [, target] of text.matchAll(MARKDOWN_LINK)) {
+  for (const [, target] of text.replace(CODE, "").matchAll(MARKDOWN_LINK)) {
     if (target.startsWith("#")) continue;
     const github = GITHUB_FILE_URL.exec(target);
     if (github !== null) {
-      const shipped = posix.normalize(github[1]);
-      if (packed.has(shipped)) {
+      const owner = (github[1] ?? github[2]).toLowerCase();
+      const shipped = posix.normalize(github[3]);
+      const ownRepository = repository === undefined || owner === repository;
+      if (ownRepository && packed.has(shipped)) {
         problems.push(
           `${file} link ${target} points at a shipped file; use a relative link to ${shipped}`,
         );
@@ -90,6 +102,12 @@ function checkLinks(file, text, packed) {
       continue;
     }
     if (/^[a-z][a-z0-9+.-]*:/i.test(target)) continue;
+    if (target.startsWith("/")) {
+      problems.push(
+        `${file} link ${target} is an absolute path; use a relative link`,
+      );
+      continue;
+    }
     const path = posix.join(posix.dirname(file), target.split("#")[0]);
     if (!packed.has(path)) {
       problems.push(
@@ -98,6 +116,29 @@ function checkLinks(file, text, packed) {
     }
   }
   return problems;
+}
+
+/**
+ * Read this package's `owner/repo` from `package.json` `repository`.
+ *
+ * @param {string} directory - Package directory containing `package.json`.
+ * @returns {string | undefined} Lower-case `owner/repo`, or undefined when not on GitHub.
+ */
+function readRepository(directory) {
+  /** @type {unknown} */
+  const manifest = JSON.parse(
+    readFileSync(join(directory, "package.json"), "utf8"),
+  );
+  if (typeof manifest !== "object" || manifest === null) return undefined;
+  const field = "repository" in manifest ? manifest.repository : undefined;
+  const url =
+    typeof field === "string"
+      ? field
+      : typeof field === "object" && field !== null && "url" in field
+        ? field.url
+        : undefined;
+  if (typeof url !== "string") return undefined;
+  return GITHUB_REPOSITORY.exec(url)?.[1].toLowerCase();
 }
 
 /**
@@ -114,10 +155,11 @@ function checkPackage(directory) {
       problems.push(`required file missing from the tarball: ${required}`);
     }
   }
+  const repository = readRepository(directory);
   for (const file of LINKED_FILES) {
     if (!packed.has(file)) continue;
     const text = readFileSync(join(directory, file), "utf8");
-    problems.push(...checkLinks(file, text, packed));
+    problems.push(...checkLinks(file, text, packed, repository));
   }
   return { problems, packed: packed.size };
 }

@@ -37,7 +37,15 @@ function run(contents, files) {
   mkdirSync(directory);
   writeFileSync(
     join(directory, "package.json"),
-    JSON.stringify({ name: "fixture-pack", version: "1.0.0", files }),
+    JSON.stringify({
+      name: "fixture-pack",
+      version: "1.0.0",
+      files,
+      repository: {
+        type: "git",
+        url: "git+https://github.com/example/fixture.git",
+      },
+    }),
   );
   for (const [path, text] of Object.entries(contents)) {
     mkdirSync(dirname(join(directory, path)), { recursive: true });
@@ -175,6 +183,39 @@ try {
       allFiles,
     ),
     0,
+  );
+  expect(
+    "GitHub URL to the same path in another repository passes",
+    run(
+      {
+        ...COMPLETE,
+        "README.md":
+          "# f\n\n[sibling](https://github.com/example/other/blob/main/docs/API.md)\n",
+      },
+      allFiles,
+    ),
+    0,
+  );
+  expect(
+    "link syntax inside code passes",
+    run(
+      {
+        ...COMPLETE,
+        "README.md":
+          "# f\n\n```md\n[example](./your-file.md)\n```\n\nInline `[x](./foo.md)` too.\n",
+      },
+      allFiles,
+    ),
+    0,
+  );
+  expect(
+    "absolute-path link fails",
+    run(
+      { ...COMPLETE, "llms.txt": "# f\n\n- [API](/docs/API.md)\n" },
+      allFiles,
+    ),
+    1,
+    "llms.txt link /docs/API.md is an absolute path",
   );
   const { LICENSE: _license, ...withoutLicense } = COMPLETE;
   expect(
