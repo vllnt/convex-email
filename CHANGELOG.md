@@ -45,6 +45,13 @@ All notable changes to this project are documented here. The format is based on
   recipient-domain-bypass advisories still open in 8.x and 9.x. Prefer `^10.1.4`, the first
   release without a published advisory; it requires Node 20+. This package's own tests now
   run on nodemailer 10.4.0 and `@types/nodemailer` is dropped (nodemailer 10 ships its types).
+- `MessageView`'s optional fields (`payload`, `subjectRef`, `idempotencyKey`, `providerId`,
+  `error`) and `SmtpMailOptions`' optional fields are typed `?: T | undefined`, so hosts that
+  enable `exactOptionalPropertyTypes` can pass them through unchanged. The client no longer
+  sends optional arguments that are `undefined`; the values on the wire are the same.
+- Development dependencies upgraded: `convex` 1.51, `convex-test` 0.0.73, `vitest` 5.1.1,
+  `eslint` 10, `@vllnt/typescript` 3 (stricter compiler flags), pnpm 10.34.9, Node 24.22.3.
+  The `convex` and `nodemailer` peer ranges are unchanged.
 
 ## [0.1.0] - 2026-09-01
 

@@ -215,9 +215,13 @@ export class Email<TPayload = unknown> {
       to,
       from,
       transport,
-      payload: opts.payload === undefined ? undefined : this.parse(opts.payload),
-      subjectRef: opts.subjectRef,
-      idempotencyKey: opts.idempotencyKey,
+      ...(opts.payload === undefined
+        ? {}
+        : { payload: this.parse(opts.payload) }),
+      ...(opts.subjectRef === undefined ? {} : { subjectRef: opts.subjectRef }),
+      ...(opts.idempotencyKey === undefined
+        ? {}
+        : { idempotencyKey: opts.idempotencyKey }),
       maxAttempts: opts.maxAttempts ?? this.maxAttempts,
     });
   }
@@ -243,7 +247,7 @@ export class Email<TPayload = unknown> {
   ): Promise<null> {
     return ctx.runMutation(this.component.mutations.markSent, {
       messageId,
-      providerId: opts.providerId,
+      ...(opts.providerId === undefined ? {} : { providerId: opts.providerId }),
     });
   }
 
@@ -260,7 +264,7 @@ export class Email<TPayload = unknown> {
   ): Promise<MarkFailedResult> {
     return ctx.runMutation(this.component.mutations.markFailed, {
       messageId,
-      error: opts.error,
+      ...(opts.error === undefined ? {} : { error: opts.error }),
     });
   }
 
@@ -300,7 +304,7 @@ export class Email<TPayload = unknown> {
     opts: { before?: number; batch?: number } = {},
   ): Promise<number> {
     return ctx.runMutation(this.component.mutations.prune, {
-      before: opts.before,
+      ...(opts.before === undefined ? {} : { before: opts.before }),
       batch: opts.batch ?? DEFAULT_PRUNE_BATCH,
     });
   }

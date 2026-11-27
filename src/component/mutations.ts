@@ -91,8 +91,10 @@ export const enqueue = mutation({
       transport: args.transport,
       status: "queued",
       payload: args.payload,
-      subjectRef: args.subjectRef,
-      idempotencyKey: args.idempotencyKey,
+      ...(args.subjectRef === undefined ? {} : { subjectRef: args.subjectRef }),
+      ...(args.idempotencyKey === undefined
+        ? {}
+        : { idempotencyKey: args.idempotencyKey }),
       attempts: 0,
       maxAttempts: args.maxAttempts,
       createdAt: now,
