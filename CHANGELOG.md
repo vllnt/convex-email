@@ -70,8 +70,9 @@ All notable changes to this project are documented here. The format is based on
   `get` and `listByStatus` views and `toMailOptions` now leave an unset optional field out of
   the object instead of setting it to `undefined`, so a host with `exactOptionalPropertyTypes`
   can return them straight through a `returns` validator that uses `v.optional(...)`. Values
-  on the wire are unchanged (Convex already dropped `undefined` fields); only code that reads
-  the object inside the same function sees the key absent. The client no longer sends
+  on the wire are unchanged (Convex already dropped `undefined` fields). Code that uses the
+  object in the same function sees the key absent, so spreading a view or mail options over
+  defaults now keeps the defaults. The client no longer sends
   optional arguments that are `undefined`. CI type-checks this host case with
   `exactOptionalPropertyTypes`.
 - Development dependencies upgraded: `convex` 1.51, `convex-test` 0.0.73, `vitest` 5.1.1,
