@@ -612,7 +612,8 @@ register<TSchema extends GenericSchema>(t: TestConvex<SchemaDefinition<TSchema, 
 Registers the component in a `convex-test` instance built with any host
 schema. `name` defaults to `"email"` and must match the `app.use` name. The
 entry ships TypeScript source that uses Vite's `import.meta.glob`, so the app
-needs `convex-test`, `vitest` and `vite`.
+needs `convex-test`, `vitest` and `vite` (plus `@edge-runtime/vm` for Vitest's
+`edge-runtime` environment).
 
 ### `ComponentApi`
 

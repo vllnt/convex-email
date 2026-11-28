@@ -84,19 +84,20 @@ export const deliver = internalAction({
   handler: async (ctx, { messageId }): Promise<null> => {
     const message = await email.get(ctx, messageId);
     if (message === null || message.status !== "queued") return null;
-    const send = createJmapSender(
-      {
-        endpoint: process.env.JMAP_API_URL ?? "",
-        token: process.env.JMAP_TOKEN ?? "",
-        accountId: process.env.JMAP_ACCOUNT_ID ?? "",
-        identityId: process.env.JMAP_IDENTITY_ID ?? "",
-        mailboxId: process.env.JMAP_MAILBOX_ID ?? "",
-      },
-      (url, init) => fetch(url, init),
-    );
     const { attempts } = await email.markSending(ctx, messageId);
     let providerId: string;
     try {
+      // Inside the try: a missing JMAP_* variable is recorded by markFailed.
+      const send = createJmapSender(
+        {
+          endpoint: process.env.JMAP_API_URL ?? "",
+          token: process.env.JMAP_TOKEN ?? "",
+          accountId: process.env.JMAP_ACCOUNT_ID ?? "",
+          identityId: process.env.JMAP_IDENTITY_ID ?? "",
+          mailboxId: process.env.JMAP_MAILBOX_ID ?? "",
+        },
+        (url, init) => fetch(url, init),
+      );
       const result = await send({
         to: message.to,
         from: message.from,
@@ -287,6 +288,8 @@ export const deliverOverSmtp = internalAction({
       });
       providerId = result.messageId;
     } catch (error) {
+      // markFailed returns { retried: true } while attempts remain; schedule
+      // another run then, as the Quick start does.
       await email.markFailed(ctx, messageId, { error: String(error) });
       return null;
     }
@@ -541,10 +544,12 @@ longer matches.
   20.
 - ES modules only (no CommonJS build).
 - Runtimes: `@vllnt/convex-email` and `@vllnt/convex-email/jmap` run in the
-  default Convex runtime (queries, mutations, actions).
-  `@vllnt/convex-email/smtp` needs a Node action (`"use node"`).
+  default Convex runtime, with no `"use node"`. JMAP sending and discovery call
+  `fetch`, so run them in an action. `@vllnt/convex-email/smtp` needs a Node
+  action (`"use node"`).
 - `@vllnt/convex-email/test` ships TypeScript source and needs `convex-test`,
-  `vitest`, `vite` and `@edge-runtime/vm` in your app.
+  `vitest` and `vite` in your app (plus `@edge-runtime/vm` for Vitest's
+  `edge-runtime` environment).
 - React: not applicable. There is no `./react` entry; read the status with your
   own query and `useQuery`.
 
