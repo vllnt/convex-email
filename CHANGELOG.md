@@ -33,13 +33,10 @@ All notable changes to this project are documented here. The format is based on
 - `register(t)` from `@vllnt/convex-email/test` accepts a host app's
   `convexTest(hostSchema, modules)` instance; it was typed to the component's own schema, so a
   host schema failed with TS2345. Type-only change; CI now type-checks a host-schema test.
-- The packed-docs link check (`scripts/check-package-docs.mjs`) skips only real CommonMark code
-  fences (line start, 3+ backticks or tildes, closed by a matching fence) and inline code spans.
-  Three backticks in the middle of a line no longer hide every link after them.
-- CI now installs the packed tarball into a clean project without `nodemailer` and imports every
-  runtime entry point (`scripts/check-package-imports.mjs`): `.`, `./jmap` and `./convex.config`
-  must load, `./smtp` must fail on the missing `nodemailer`, and with `nodemailer` added `./smtp`
-  must load. The docs now state that importing `./smtp` requires `nodemailer`.
+- The docs now state that importing `@vllnt/convex-email/smtp` requires `nodemailer` to be
+  installed, even for the pure helpers; `.`, `./jmap` and `./convex.config` never need it. CI
+  checks this by importing every runtime entry point from the packed tarball, with and without
+  `nodemailer`.
 
 ### Changed
 
