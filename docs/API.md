@@ -212,17 +212,21 @@ interface MessageView<TPayload = unknown> {
   from: string;
   transport: string;
   status: MessageStatus;
-  payload?: TPayload | undefined;
-  subjectRef?: string | undefined;
-  idempotencyKey?: string | undefined;
-  providerId?: string | undefined; // set by markSent
+  payload?: TPayload;
+  subjectRef?: string;
+  idempotencyKey?: string;
+  providerId?: string; // set by markSent
   attempts: number; // markSending calls so far
   maxAttempts: number;
-  error?: string | undefined; // from the last markFailed; cleared by markSent
+  error?: string; // from the last markFailed; cleared by markSent
   createdAt: number; // ms since epoch
   updatedAt: number; // ms since epoch, last change
 }
 ```
+
+An unset optional field is absent from the object, not a key holding `undefined`, so a query
+can return a view straight through a `returns` validator that declares those fields with
+`v.optional(...)`, also under `exactOptionalPropertyTypes`.
 
 ### `Parser`
 
@@ -547,11 +551,11 @@ interface SmtpMessage {
 interface SmtpMailOptions {
   to: string;
   from: string;
-  subject?: string | undefined;
-  text?: string | undefined;
-  html?: string | undefined;
-  replyTo?: string | undefined;
-  headers?: Record<string, string> | undefined;
+  subject?: string;
+  text?: string;
+  html?: string;
+  replyTo?: string;
+  headers?: Record<string, string>;
 }
 ```
 

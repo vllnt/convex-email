@@ -101,11 +101,11 @@ export function toMailOptions(
   return {
     to: message.to,
     from,
-    subject: message.subject,
-    text: message.text,
-    html: message.html,
-    replyTo: message.replyTo,
-    headers: message.headers,
+    ...(message.subject === undefined ? {} : { subject: message.subject }),
+    ...(message.text === undefined ? {} : { text: message.text }),
+    ...(message.html === undefined ? {} : { html: message.html }),
+    ...(message.replyTo === undefined ? {} : { replyTo: message.replyTo }),
+    ...(message.headers === undefined ? {} : { headers: message.headers }),
   };
 }
 

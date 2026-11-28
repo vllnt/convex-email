@@ -114,6 +114,9 @@ describe("toMailOptions", () => {
       { from: "cfg@x.com" },
     );
     expect(opts.from).toBe("cfg@x.com");
+    for (const key of ["subject", "html", "replyTo", "headers"]) {
+      expect(key in opts).toBe(false);
+    }
   });
 
   test("rejects an empty or non-string `to`", () => {

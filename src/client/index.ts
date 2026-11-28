@@ -164,11 +164,8 @@ export class Email<TPayload = unknown> {
     this.maxAttempts = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
   }
 
-  /** Narrow an opaque value through the host parser; pass `undefined` and an unset parser through. */
-  private parse(value: unknown): TPayload | undefined {
-    if (value === undefined) {
-      return undefined;
-    }
+  /** Narrow a set opaque value through the host parser; pass it through when no parser is set. */
+  private parse(value: unknown): TPayload {
     if (this.payloadValidator === undefined) {
       return value as TPayload;
     }
@@ -183,13 +180,17 @@ export class Email<TPayload = unknown> {
       from: raw.from,
       transport: raw.transport,
       status: raw.status,
-      payload: this.parse(raw.payload),
-      subjectRef: raw.subjectRef,
-      idempotencyKey: raw.idempotencyKey,
-      providerId: raw.providerId,
+      ...(raw.payload === undefined
+        ? {}
+        : { payload: this.parse(raw.payload) }),
+      ...(raw.subjectRef === undefined ? {} : { subjectRef: raw.subjectRef }),
+      ...(raw.idempotencyKey === undefined
+        ? {}
+        : { idempotencyKey: raw.idempotencyKey }),
+      ...(raw.providerId === undefined ? {} : { providerId: raw.providerId }),
       attempts: raw.attempts,
       maxAttempts: raw.maxAttempts,
-      error: raw.error,
+      ...(raw.error === undefined ? {} : { error: raw.error }),
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
     };
