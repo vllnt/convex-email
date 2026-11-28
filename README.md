@@ -268,18 +268,19 @@ export const deliverOverSmtp = internalAction({
   handler: async (ctx, { messageId }): Promise<null> => {
     const message = await email.get(ctx, messageId);
     if (message === null || message.status !== "queued") return null;
-    const send = createSmtpSender({
-      host: process.env.SMTP_HOST ?? "",
-      port: 465,
-      secure: true,
-      auth: {
-        user: process.env.SMTP_USER ?? "",
-        pass: process.env.SMTP_PASS ?? "",
-      },
-    });
     await email.markSending(ctx, messageId);
     let providerId: string;
     try {
+      // Inside the try: a missing SMTP_* variable is recorded by markFailed.
+      const send = createSmtpSender({
+        host: process.env.SMTP_HOST ?? "",
+        port: 465,
+        secure: true,
+        auth: {
+          user: process.env.SMTP_USER ?? "",
+          pass: process.env.SMTP_PASS ?? "",
+        },
+      });
       const result = await send({
         to: message.to,
         from: message.from,
