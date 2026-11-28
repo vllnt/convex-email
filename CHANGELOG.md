@@ -42,6 +42,9 @@ All notable changes to this project are documented here. The format is based on
   installed, even for the pure helpers; `.`, `./jmap` and `./convex.config` never need it. CI
   checks this by importing every runtime entry point from the packed tarball, with and without
   `nodemailer`.
+- The pnpm release-age gate (7 days, `@vllnt/*` excluded) now lives in `pnpm-workspace.yaml`.
+  pnpm 10 ignored it in the `package.json` `pnpm` field, so it was not enforced. Renovate
+  waits the same 7 days, so its lockfile updates pass the gate.
 
 ### Changed
 
