@@ -1,20 +1,7 @@
 {
   "extends": "./tsconfig.json",
-  "include": [
-    "src/shared.ts",
-    "src/client/**/*",
-    "src/smtp/**/*",
-    "src/jmap/**/*",
-    "example/convex/register.test.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "src/component/**/*",
-    "src/test.ts",
-    "src/smtp/**/*.test.ts",
-    "src/jmap/**/*.test.ts"
-  ],
+  "include": ["src/**/*", "example/convex/**/*"],
+  "exclude": ["node_modules", "dist", "example/convex/_generated/**"],
   "compilerOptions": {
     "rootDir": "."
   }

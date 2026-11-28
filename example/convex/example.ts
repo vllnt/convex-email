@@ -1,8 +1,9 @@
 import { paginationOptsValidator } from "convex/server";
-import { v } from "convex/values";
+import { v, type Infer } from "convex/values";
 import { components } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 import { Email } from "../../src/client";
+import type { MessageView } from "../../src/client/types";
 import { sendViaSmtp } from "../../src/smtp/send";
 import type { SmtpSendInfo, SmtpTransport } from "../../src/smtp/types";
 import { sendViaJmap } from "../../src/jmap/send";
@@ -66,6 +67,23 @@ const messageView = v.object({
   updatedAt: v.number(),
 });
 
+/**
+ * Copy a client view into the `messageView` shape, leaving an unset optional field
+ * absent rather than `undefined`, as `exactOptionalPropertyTypes` requires.
+ */
+function stored(view: MessageView<unknown>): Infer<typeof messageView> {
+  const { payload, subjectRef, idempotencyKey, providerId, error, ...required } =
+    view;
+  return {
+    ...required,
+    ...(payload === undefined ? {} : { payload }),
+    ...(subjectRef === undefined ? {} : { subjectRef }),
+    ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
+    ...(providerId === undefined ? {} : { providerId }),
+    ...(error === undefined ? {} : { error }),
+  };
+}
+
 const paginated = v.object({
   page: v.array(messageView),
   isDone: v.boolean(),
@@ -88,13 +106,8 @@ export const enqueue = mutation({
     maxAttempts: v.optional(v.number()),
   },
   returns: v.object({ messageId: v.string(), deduplicated: v.boolean() }),
-  handler: (ctx, a) =>
-    email.enqueue(ctx, a.messageId, a.to, a.from, a.transport, {
-      payload: a.payload,
-      subjectRef: a.subjectRef,
-      idempotencyKey: a.idempotencyKey,
-      maxAttempts: a.maxAttempts,
-    }),
+  handler: (ctx, { messageId, to, from, transport, ...options }) =>
+    email.enqueue(ctx, messageId, to, from, transport, options),
 });
 
 export const markSending = mutation({
@@ -106,8 +119,8 @@ export const markSending = mutation({
 export const markSent = mutation({
   args: { messageId: v.string(), providerId: v.optional(v.string()) },
   returns: v.null(),
-  handler: (ctx, a) =>
-    email.markSent(ctx, a.messageId, { providerId: a.providerId }),
+  handler: (ctx, { messageId, ...options }) =>
+    email.markSent(ctx, messageId, options),
 });
 
 export const markFailed = mutation({
@@ -116,13 +129,17 @@ export const markFailed = mutation({
     status: v.union(v.literal("queued"), v.literal("failed")),
     retried: v.boolean(),
   }),
-  handler: (ctx, a) => email.markFailed(ctx, a.messageId, { error: a.error }),
+  handler: (ctx, { messageId, ...options }) =>
+    email.markFailed(ctx, messageId, options),
 });
 
 export const get = query({
   args: { messageId: v.string() },
   returns: v.union(v.null(), messageView),
-  handler: (ctx, a) => email.get(ctx, a.messageId),
+  handler: async (ctx, a) => {
+    const view = await email.get(ctx, a.messageId);
+    return view === null ? null : stored(view);
+  },
 });
 
 export const listByStatus = query({
@@ -136,13 +153,16 @@ export const listByStatus = query({
     paginationOpts: paginationOptsValidator,
   },
   returns: paginated,
-  handler: (ctx, a) => email.listByStatus(ctx, a.status, a.paginationOpts),
+  handler: async (ctx, a) => {
+    const result = await email.listByStatus(ctx, a.status, a.paginationOpts);
+    return { ...result, page: result.page.map(stored) };
+  },
 });
 
 export const prune = mutation({
   args: { before: v.optional(v.number()), batch: v.optional(v.number()) },
   returns: v.number(),
-  handler: (ctx, a) => email.prune(ctx, { before: a.before, batch: a.batch }),
+  handler: (ctx, a) => email.prune(ctx, a),
 });
 
 /** Named-mount variants — prove a second instance is independent. */
@@ -156,7 +176,10 @@ export const enqueueImport = mutation({
 export const getImport = query({
   args: { messageId: v.string() },
   returns: v.union(v.null(), messageView),
-  handler: (ctx, a) => importEmail.get(ctx, a.messageId),
+  handler: async (ctx, a) => {
+    const view = await importEmail.get(ctx, a.messageId);
+    return view === null ? null : stored(view);
+  },
 });
 
 export const pruneImport = mutation({
@@ -173,17 +196,17 @@ export const enqueueStrict = mutation({
     idempotencyKey: v.optional(v.string()),
   },
   returns: v.object({ messageId: v.string(), deduplicated: v.boolean() }),
-  handler: (ctx, a) =>
-    strictEmail.enqueue(ctx, a.messageId, "to@x.com", "from@x.com", "jmap", {
-      payload: a.payload,
-      idempotencyKey: a.idempotencyKey,
-    }),
+  handler: (ctx, { messageId, ...options }) =>
+    strictEmail.enqueue(ctx, messageId, "to@x.com", "from@x.com", "jmap", options),
 });
 
 export const getStrict = query({
   args: { messageId: v.string() },
   returns: v.union(v.null(), messageView),
-  handler: (ctx, a) => strictEmail.get(ctx, a.messageId),
+  handler: async (ctx, a) => {
+    const view = await strictEmail.get(ctx, a.messageId);
+    return view === null ? null : stored(view);
+  },
 });
 
 /**
@@ -272,7 +295,7 @@ export const flushQueuedOverSmtp = mutation({
           {
             to: msg.to,
             from: msg.from,
-            subject: body.subject,
+            ...(body.subject === undefined ? {} : { subject: body.subject }),
             html: body.html ?? "<p></p>",
           },
           {},
@@ -373,7 +396,7 @@ export const flushQueuedOverJmap = mutation({
           {
             to: msg.to,
             from: msg.from,
-            subject: body.subject,
+            ...(body.subject === undefined ? {} : { subject: body.subject }),
             html: body.html ?? "<p></p>",
           },
           jmapConfig,
@@ -428,7 +451,7 @@ export const flushQueuedRouted = mutation({
       const message = {
         to: msg.to,
         from: msg.from,
-        subject: body.subject,
+        ...(body.subject === undefined ? {} : { subject: body.subject }),
         html: body.html ?? "<p></p>",
       };
       try {

@@ -374,8 +374,7 @@ describe("email — listByStatus (paginated polling)", () => {
       status: "sending",
       paginationOpts: { cursor: null, numItems: 10 },
     });
-    expect(sending.page).toHaveLength(1);
-    expect(sending.page[0].messageId).toBe("p2");
+    expect(sending.page.map((m) => m.messageId)).toEqual(["p2"]);
   });
 
   test("respects the page size and returns a continue cursor", async () => {
