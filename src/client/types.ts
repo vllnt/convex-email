@@ -27,19 +27,19 @@ export interface MessageView<TPayload = unknown> {
   /** The current lifecycle status. */
   status: MessageStatus;
   /** The opaque rendered message payload (narrowed if a `payloadValidator` is set). */
-  payload?: TPayload | undefined;
+  payload?: TPayload;
   /** An opaque host ref stored with the message (e.g. the addressee subject). No client method lists by it. */
-  subjectRef?: string | undefined;
+  subjectRef?: string;
   /** The dedup key, if the message was enqueued with one. */
-  idempotencyKey?: string | undefined;
+  idempotencyKey?: string;
   /** The transport's own message handle, recorded once `sent`. */
-  providerId?: string | undefined;
+  providerId?: string;
   /** The number of send attempts made so far. */
   attempts: number;
   /** The maximum send attempts before a failure is terminal. */
   maxAttempts: number;
   /** The host-supplied failure reason from the last failed attempt. */
-  error?: string | undefined;
+  error?: string;
   /** Absolute ms timestamp the message was enqueued. */
   createdAt: number;
   /** Absolute ms timestamp of the last transition. */

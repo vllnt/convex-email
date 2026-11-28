@@ -63,11 +63,14 @@ All notable changes to this project are documented here. The format is based on
   release without a published advisory; it requires Node 20+. This package's own tests now
   run on nodemailer 10 and `@types/nodemailer` is dropped (nodemailer 10 ships its types).
 - `MessageView`'s optional fields (`payload`, `subjectRef`, `idempotencyKey`, `providerId`,
-  `error`) and `SmtpMailOptions`' optional fields are typed `?: T | undefined`, matching what
-  the client returns. Hosts without `exactOptionalPropertyTypes` see no change; a host with
-  it enabled that assigns these values to its own `?: T` fields now needs `| undefined` there.
-  The client no longer sends optional arguments that are `undefined`; the values on the wire
-  are the same.
+  `error`) and `SmtpMailOptions`' optional fields keep their 0.1.0 types (`?: T`). The client's
+  `get` and `listByStatus` views and `toMailOptions` now leave an unset optional field out of
+  the object instead of setting it to `undefined`, so a host with `exactOptionalPropertyTypes`
+  can return them straight through a `returns` validator that uses `v.optional(...)`. Values
+  on the wire are unchanged (Convex already dropped `undefined` fields); only code that reads
+  the object inside the same function sees the key absent. The client no longer sends
+  optional arguments that are `undefined`. CI type-checks this host case with
+  `exactOptionalPropertyTypes`.
 - Development dependencies upgraded: `convex` 1.51, `convex-test` 0.0.73, `vitest` 5.1.1,
   `eslint` 10, `@vllnt/typescript` 3 (stricter compiler flags), `nodemailer` 10.6.1, the
   `minimatch` override 11.0.9, pnpm 10.34.9, Node 24.22.3. The `convex` and `nodemailer` peer

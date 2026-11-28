@@ -1,9 +1,8 @@
 import { paginationOptsValidator } from "convex/server";
-import { v, type Infer } from "convex/values";
+import { v } from "convex/values";
 import { components } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 import { Email } from "../../src/client";
-import type { MessageView } from "../../src/client/types";
 import { sendViaSmtp } from "../../src/smtp/send";
 import type { SmtpSendInfo, SmtpTransport } from "../../src/smtp/types";
 import { sendViaJmap } from "../../src/jmap/send";
@@ -67,23 +66,6 @@ const messageView = v.object({
   updatedAt: v.number(),
 });
 
-/**
- * Copy a client view into the `messageView` shape, leaving an unset optional field
- * absent rather than `undefined`, as `exactOptionalPropertyTypes` requires.
- */
-function stored(view: MessageView<unknown>): Infer<typeof messageView> {
-  const { payload, subjectRef, idempotencyKey, providerId, error, ...required } =
-    view;
-  return {
-    ...required,
-    ...(payload === undefined ? {} : { payload }),
-    ...(subjectRef === undefined ? {} : { subjectRef }),
-    ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
-    ...(providerId === undefined ? {} : { providerId }),
-    ...(error === undefined ? {} : { error }),
-  };
-}
-
 const paginated = v.object({
   page: v.array(messageView),
   isDone: v.boolean(),
@@ -136,10 +118,7 @@ export const markFailed = mutation({
 export const get = query({
   args: { messageId: v.string() },
   returns: v.union(v.null(), messageView),
-  handler: async (ctx, a) => {
-    const view = await email.get(ctx, a.messageId);
-    return view === null ? null : stored(view);
-  },
+  handler: (ctx, a) => email.get(ctx, a.messageId),
 });
 
 export const listByStatus = query({
@@ -153,10 +132,7 @@ export const listByStatus = query({
     paginationOpts: paginationOptsValidator,
   },
   returns: paginated,
-  handler: async (ctx, a) => {
-    const result = await email.listByStatus(ctx, a.status, a.paginationOpts);
-    return { ...result, page: result.page.map(stored) };
-  },
+  handler: (ctx, a) => email.listByStatus(ctx, a.status, a.paginationOpts),
 });
 
 export const prune = mutation({
@@ -176,10 +152,7 @@ export const enqueueImport = mutation({
 export const getImport = query({
   args: { messageId: v.string() },
   returns: v.union(v.null(), messageView),
-  handler: async (ctx, a) => {
-    const view = await importEmail.get(ctx, a.messageId);
-    return view === null ? null : stored(view);
-  },
+  handler: (ctx, a) => importEmail.get(ctx, a.messageId),
 });
 
 export const pruneImport = mutation({
@@ -203,10 +176,7 @@ export const enqueueStrict = mutation({
 export const getStrict = query({
   args: { messageId: v.string() },
   returns: v.union(v.null(), messageView),
-  handler: async (ctx, a) => {
-    const view = await strictEmail.get(ctx, a.messageId);
-    return view === null ? null : stored(view);
-  },
+  handler: (ctx, a) => strictEmail.get(ctx, a.messageId),
 });
 
 /**

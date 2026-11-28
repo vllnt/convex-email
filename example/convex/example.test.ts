@@ -1,7 +1,8 @@
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { api } from "./_generated/api";
+import { api, components } from "./_generated/api";
 import schema from "./schema";
+import { Email } from "../../src/client";
 import { register } from "../../src/test";
 import crons, { PRUNE_BATCH, PRUNE_INTERVAL } from "../../src/component/crons";
 
@@ -130,6 +131,39 @@ describe("email — happy path (the durable send queue)", () => {
     });
     const msg = await t.query(api.example.get, { messageId: "m_nopay" });
     expect(msg?.payload).toBeUndefined();
+  });
+
+  test("the client view leaves unset optional fields out", async () => {
+    const t = setup();
+    await t.mutation(api.example.enqueue, {
+      messageId: "m_bare",
+      to: "u@x.com",
+      from: "f@x.com",
+      transport: "jmap",
+    });
+    const optional = [
+      "payload",
+      "subjectRef",
+      "idempotencyKey",
+      "providerId",
+      "error",
+    ];
+    const present = await t.run(async (ctx) => {
+      const client = new Email(components.email);
+      const msg = await client.get(ctx, "m_bare");
+      const listed = await client.listByStatus(ctx, "queued", {
+        numItems: 10,
+        cursor: null,
+      });
+      return [msg, listed.page[0]].map((view) => ({
+        messageId: view?.messageId,
+        keys: optional.filter((key) => key in (view ?? {})),
+      }));
+    });
+    expect(present).toEqual([
+      { messageId: "m_bare", keys: [] },
+      { messageId: "m_bare", keys: [] },
+    ]);
   });
 });
 
