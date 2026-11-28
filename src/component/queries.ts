@@ -12,13 +12,15 @@ function view(msg: Doc<"messages">) {
     from: msg.from,
     transport: msg.transport,
     status: msg.status,
-    payload: msg.payload,
-    subjectRef: msg.subjectRef,
-    idempotencyKey: msg.idempotencyKey,
-    providerId: msg.providerId,
+    ...(msg.payload === undefined ? {} : { payload: msg.payload }),
+    ...(msg.subjectRef === undefined ? {} : { subjectRef: msg.subjectRef }),
+    ...(msg.idempotencyKey === undefined
+      ? {}
+      : { idempotencyKey: msg.idempotencyKey }),
+    ...(msg.providerId === undefined ? {} : { providerId: msg.providerId }),
     attempts: msg.attempts,
     maxAttempts: msg.maxAttempts,
-    error: msg.error,
+    ...(msg.error === undefined ? {} : { error: msg.error }),
     createdAt: msg.createdAt,
     updatedAt: msg.updatedAt,
   };

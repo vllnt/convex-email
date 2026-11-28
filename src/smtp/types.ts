@@ -81,11 +81,11 @@ export interface SmtpTransport {
 export interface SmtpMailOptions {
   to: string;
   from: string;
-  subject?: string;
-  text?: string;
-  html?: string;
-  replyTo?: string;
-  headers?: Record<string, string>;
+  subject?: string | undefined;
+  text?: string | undefined;
+  html?: string | undefined;
+  replyTo?: string | undefined;
+  headers?: Record<string, string> | undefined;
 }
 
 /**
