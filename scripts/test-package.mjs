@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import {
+  copyFileSync,
   existsSync,
   mkdtempSync,
   readdirSync,
@@ -28,7 +29,7 @@ import {
  */
 
 const root = resolve(process.argv[2] ?? ".");
-/** @type {{ name: string, peerDependencies: Record<string, string> }} */
+/** @type {{ name: string, packageManager: string, peerDependencies: Record<string, string> }} */
 const metadata = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 if (!existsSync(join(root, "dist"))) {
   console.error("FAIL  dist/ is missing; run pnpm build first");
@@ -90,13 +91,20 @@ try {
   if (tarball === undefined) throw new Error("npm pack produced no tarball");
   writeFileSync(
     join(temporary, "package.json"),
-    JSON.stringify({ name: "consumer", private: true, type: "module" }),
+    JSON.stringify({
+      name: "consumer",
+      // The same pnpm as this repository (it applies the release-age gate).
+      packageManager: metadata.packageManager,
+      private: true,
+      type: "module",
+    }),
   );
-  run("npm", [
-    "install",
+  // No lockfile here, so the repo's release-age gate (its pnpm-workspace.yaml) keeps
+  // floating transitive dependencies off releases younger than the repo allows.
+  copyFileSync(join(root, "pnpm-workspace.yaml"), join(temporary, "pnpm-workspace.yaml"));
+  run("pnpm", [
+    "add",
     "--ignore-scripts",
-    "--no-audit",
-    "--no-fund",
     join(temporary, tarball),
     `convex@${convexFloor}`,
     // The newest convex-test whose convex peer range still allows the convex floor.

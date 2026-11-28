@@ -8,6 +8,12 @@ override what you may have learned about Convex from training data.
 Convex agent skills for common tasks can be installed by running `npx convex ai-files install`.
 <!-- convex-ai-end -->
 
+`example/convex/_generated/ai/guidelines.md` is generated and git-ignored, so a fresh clone lacks it.
+To create it, run `pnpm exec convex ai-files install` from the repository root (it needs network
+access). The command also rewrites the Convex block above and adds `CLAUDE.md` and `.claude/`, which
+this repo bans: run `git restore AGENTS.md`, then delete `CLAUDE.md` and `.claude/`. If you cannot
+run it, follow the [Convex docs](https://docs.convex.dev) instead.
+
 # @vllnt/convex-email
 
 A durable, transport-agnostic outbound transactional email queue, as a Convex component. A host
