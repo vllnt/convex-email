@@ -30,6 +30,13 @@ All notable changes to this project are documented here. The format is based on
   integer with `ConvexError({ code: "INVALID_MAX_ATTEMPTS" })`.
 - `@vllnt/convex-email/test` now type-checks under `moduleResolution: nodenext` (explicit `.js`
   relative imports, Vite client types referenced).
+- `register(t)` from `@vllnt/convex-email/test` accepts a host app's
+  `convexTest(hostSchema, modules)` instance; it was typed to the component's own schema, so a
+  host schema failed with TS2345. Type-only change; CI now type-checks a host-schema test.
+- The docs now state that importing `@vllnt/convex-email/smtp` requires `nodemailer` to be
+  installed, even for the pure helpers; `.`, `./jmap` and `./convex.config` never need it. CI
+  checks this by importing every runtime entry point from the packed tarball, with and without
+  `nodemailer`.
 
 ### Changed
 

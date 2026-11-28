@@ -4,7 +4,8 @@
     "src/shared.ts",
     "src/client/**/*",
     "src/smtp/**/*",
-    "src/jmap/**/*"
+    "src/jmap/**/*",
+    "example/convex/register.test.ts"
   ],
   "exclude": [
     "node_modules",
@@ -13,5 +14,8 @@
     "src/test.ts",
     "src/smtp/**/*.test.ts",
     "src/jmap/**/*.test.ts"
-  ]
+  ],
+  "compilerOptions": {
+    "rootDir": "."
+  }
 }

@@ -60,6 +60,7 @@
     "preversion": "pnpm install --frozen-lockfile && pnpm build && pnpm test:coverage && pnpm typecheck && pnpm generate:llms",
     "check:agents": "node -e \"const f=require('node:fs');if(!f.existsSync('AGENTS.md')||f.existsSync('CLAUDE.md')||f.existsSync('.claude'))process.exit(1)\"",
     "check:package": "node scripts/test-check-package-docs.mjs && node scripts/check-package-docs.mjs",
+    "check:imports": "node scripts/check-package-imports.mjs",
     "codegen": "pnpm convex codegen --component-dir ./src/component"
   },
   "peerDependencies": {

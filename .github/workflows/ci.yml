@@ -78,3 +78,5 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      # Packed tarball import test: every entry loads without the optional nodemailer except ./smtp.
+      - run: pnpm check:imports

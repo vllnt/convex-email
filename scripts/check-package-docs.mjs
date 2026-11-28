@@ -28,8 +28,50 @@ const GITHUB_FILE_URL =
 /** `owner/repo` in a GitHub repository URL. */
 const GITHUB_REPOSITORY = /github\.com[/:]([^/]+\/[^/#?]+?)(?:\.git)?\/?$/;
 
-/** Fenced code blocks and inline code spans, whose link syntax is only an example. */
-const CODE = /```[\s\S]*?```|`[^`\n]*`/g;
+/**
+ * A CommonMark fence opener: up to 3 spaces of indent, then 3+ backticks or 3+
+ * tildes. Group 1 is the fence run, group 2 the info string.
+ */
+const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+
+/** An inline code span on one line: a backtick run closed by a run of the same length. */
+const INLINE_CODE = /(?<!`)(`+)(?!`).*?(?<!`)\1(?!`)/g;
+
+/**
+ * Remove fenced code blocks and inline code spans, whose link syntax is only an
+ * example. Per CommonMark, a fence opens only at the start of a line and closes
+ * at a line holding only a fence of the same character that is at least as
+ * long; an unclosed fence runs to the end of the file. Three backticks in the
+ * middle of a line do not open a fence.
+ *
+ * @param {string} text - Markdown source.
+ * @returns {string} The text with code removed.
+ */
+function stripCode(text) {
+  const kept = [];
+  let fence;
+  for (const line of text.split(/\r?\n/)) {
+    if (fence !== undefined) {
+      const close = FENCE_OPEN.exec(line);
+      if (
+        close !== null &&
+        close[1][0] === fence[0] &&
+        close[1].length >= fence.length &&
+        close[2].trim() === ""
+      ) {
+        fence = undefined;
+      }
+      continue;
+    }
+    const open = FENCE_OPEN.exec(line);
+    if (open !== null && !(open[1][0] === "`" && open[2].includes("`"))) {
+      fence = open[1];
+      continue;
+    }
+    kept.push(line.replace(INLINE_CODE, ""));
+  }
+  return kept.join("\n");
+}
 
 /** Shipped Markdown files whose links must resolve inside the tarball. */
 const LINKED_FILES = ["llms.txt", "README.md", "docs/API.md"];
@@ -87,7 +129,7 @@ function listPackedFiles(directory) {
  */
 function checkLinks(file, text, packed, repository) {
   const problems = [];
-  for (const [, target] of text.replace(CODE, "").matchAll(MARKDOWN_LINK)) {
+  for (const [, target] of stripCode(text).matchAll(MARKDOWN_LINK)) {
     if (target.startsWith("#")) continue;
     const github = GITHUB_FILE_URL.exec(target);
     if (github !== null) {

@@ -209,6 +209,54 @@ try {
     0,
   );
   expect(
+    "broken link after a mid-line triple backtick fails",
+    run(
+      {
+        ...COMPLETE,
+        "README.md":
+          "# f\n\nWrap it in ```ts fences.\n\n[x](./missing.md)\n\n```\nend\n```\n",
+      },
+      allFiles,
+    ),
+    1,
+    "README.md link ./missing.md does not resolve",
+  );
+  expect(
+    "link syntax inside backtick, tilde, and longer fences passes",
+    run(
+      {
+        ...COMPLETE,
+        "README.md":
+          "# f\n\n  ```md\n[a](./a.md)\n  ```\n\n~~~\n[b](./b.md)\n~~~\n\n````md\n```\n[c](./c.md)\n````\n",
+      },
+      allFiles,
+    ),
+    0,
+  );
+  expect(
+    "link syntax inside a CRLF fence passes",
+    run(
+      {
+        ...COMPLETE,
+        "README.md": "# f\r\n\r\n```md\r\n[a](./a.md)\r\n```\r\n",
+      },
+      allFiles,
+    ),
+    0,
+  );
+  expect(
+    "broken link after a closed tilde fence fails",
+    run(
+      {
+        ...COMPLETE,
+        "README.md": "# f\n\n~~~\n```\n~~~\n\n[x](./missing.md)\n",
+      },
+      allFiles,
+    ),
+    1,
+    "README.md link ./missing.md does not resolve",
+  );
+  expect(
     "absolute-path link fails",
     run(
       { ...COMPLETE, "llms.txt": "# f\n\n- [API](/docs/API.md)\n" },

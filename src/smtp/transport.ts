@@ -6,8 +6,8 @@
  * inside the sandboxed component.
  *
  * `nodemailer` is an **optional peer dependency** — the queue core installs and
- * runs with zero third-party runtime deps. This module is import-tested only when
- * the host opts into SMTP. It is **excluded from `coverage.include`**: it is a
+ * runs with zero third-party runtime deps. CI import-tests this module from the
+ * packed tarball with `nodemailer` installed. It is **excluded from `coverage.include`**: it is a
  * trivial pass-through to the real library, consumer-E2E verified (exactly as the
  * `./react` live-backend integration is the consuming app's E2E). The pure
  * {@link sendViaSmtp} + config validation it delegates to ARE covered at 100%.

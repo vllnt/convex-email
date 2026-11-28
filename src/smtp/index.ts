@@ -6,9 +6,11 @@
  * ship a `"use node"` action, so the real send is host-side glue.
  *
  * Tree-shake boundary: a backend-only consumer importing `@vllnt/convex-email`
- * (the `.` entry) pulls ZERO SMTP code and no `nodemailer`. Importing this `./smtp`
- * entry is the explicit opt-in; `nodemailer` is an optional peer dep loaded only
- * by {@link createSmtpTransport} / {@link createSmtpSender} here.
+ * (the `.` entry) or `@vllnt/convex-email/jmap` pulls ZERO SMTP code and never
+ * needs `nodemailer`. Importing this `./smtp` entry is the explicit opt-in and
+ * REQUIRES `nodemailer` (an optional peer dep) to be installed, even for the pure
+ * helpers: this barrel re-exports `./transport.js`, which imports `nodemailer` at
+ * the top level, so the import fails with `ERR_MODULE_NOT_FOUND` without it.
  *
  * Two layers:
  * - pure + 100%-covered: {@link sendViaSmtp}, {@link validateSmtpConfig},
