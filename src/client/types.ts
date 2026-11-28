@@ -28,7 +28,7 @@ export interface MessageView<TPayload = unknown> {
   status: MessageStatus;
   /** The opaque rendered message payload (narrowed if a `payloadValidator` is set). */
   payload?: TPayload | undefined;
-  /** An opaque host ref for subject-centric listing (e.g. the addressee subject). */
+  /** An opaque host ref stored with the message (e.g. the addressee subject). No client method lists by it. */
   subjectRef?: string | undefined;
   /** The dedup key, if the message was enqueued with one. */
   idempotencyKey?: string | undefined;
@@ -58,7 +58,7 @@ export interface EnqueueResult {
 export interface EnqueueOptions<TPayload> {
   /** The opaque rendered message payload (validated against `payloadValidator` before storage). */
   payload?: TPayload;
-  /** An opaque host ref recorded for subject-centric listing. */
+  /** An opaque host ref stored with the message. No client method lists by it. */
   subjectRef?: string;
   /** A dedup key — a second enqueue carrying the same key returns the existing message. */
   idempotencyKey?: string;

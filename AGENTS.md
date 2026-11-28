@@ -180,17 +180,18 @@ second instance (`app.use(component, { name })`) for a static partition.
 
 | Changed | Update in the same commit |
 |---------|--------------------------|
-| Public API (enqueue/markSending/markSent/markFailed/get/listByStatus/prune signatures) | README API Reference table, `docs/API.md`, `llms.txt` context |
-| Config options / defaults (validator, maxAttempts, retention, batch) | README API Reference, `docs/API.md` constructor section |
-| Schema / table / indexes | README Architecture, `docs/API.md` |
-| Error codes | `docs/API.md` → `## Error codes` table |
-| `peerDependencies.convex` version | `llms.txt` context line (`convex@^X.Y.Z`), `docs/API.md` Compatibility line, README Installation peer note |
-| `peerDependencies.nodemailer` range (optional SMTP peer) | `docs/API.md` Compatibility + SMTP section, `llms.txt` context, README Installation + Transports, CHANGELOG |
-| SMTP transport API (`sendViaSmtp` / `validateSmtpConfig` / `toMailOptions` / `createSmtpSender` / `SmtpConfig` / `SmtpMessage`) | README Transports, `docs/API.md` SMTP section, `llms.txt` context |
-| JMAP transport API (`sendViaJmap` / `discoverJmapSession` / `createJmapSender` / `JmapConfig` / `JmapMessage`) | README Transports, `docs/API.md` JMAP section, `vitest.config.mts` `coverage.include`, `llms.txt` context |
+| Public API (enqueue/markSending/markSent/markFailed/get/listByStatus/prune signatures) | README `## API` table and Quick start, `docs/API.md` (one `###` heading per export and method), `llms.txt` context |
+| Config options / defaults (validator, maxAttempts, retention, batch) | README `## Limits and gotchas`, `docs/API.md` `Email` section |
+| Schema / table / indexes | README `## Limits and gotchas`, `docs/API.md` |
+| Error codes or thrown messages | README `## Errors and fixes` and `docs/API.md` `## Errors` (`pnpm test:package` fails on any missing code or message) |
+| `peerDependencies.convex` version | `llms.txt` context line (`convex@^X.Y.Z`), `docs/API.md` Compatibility line, README Install and Compatibility, `convex@` floor installed by `scripts/test-package.mjs` (and its pinned `convex-test`) |
+| `peerDependencies.nodemailer` range (optional SMTP peer) | `docs/API.md` Compatibility + SMTP section, `llms.txt` context, README Install and Compatibility, CHANGELOG |
+| SMTP transport API (`sendViaSmtp` / `validateSmtpConfig` / `toMailOptions` / `createSmtpSender` / `SmtpConfig` / `SmtpMessage`) | README API table and Common tasks, `docs/API.md` SMTP section, `llms.txt` context |
+| JMAP transport API (`sendViaJmap` / `discoverJmapSession` / `createJmapSender` / `JmapConfig` / `JmapMessage`) | README API table, Quick start and Common tasks, `docs/API.md` JMAP section, `vitest.config.mts` `coverage.include`, `llms.txt` context |
 | `coverage.include` (a new covered source file) | `vitest.config.mts` include list; a new file without a test fails CI |
 | Lifecycle / state machine | `docs/API.md` mutation sections, Key design decisions above |
 | Shipped files (`package.json` `files`, a new bundled doc) | `REQUIRED_FILES` in `scripts/check-package-docs.mjs` (run by `pnpm lint`), `publish.yml` push `paths`, README "For coding agents" note |
+| README sections, examples, Links block or footer | `scripts/check-documentation.mjs` contract (run by `pnpm test:package`; its own test runs in `pnpm lint`); README `ts` examples must compile and the README test must pass |
 | Any change to `llms.txt` | `pnpm generate:llms` validates the index and its links (it generates nothing; `llms.txt` is the only LLM index) |
 
 Grep old values before committing (e.g. after a `peerDependencies.convex` bump, `git grep "1.41.0"` → only the new range survives).

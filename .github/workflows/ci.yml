@@ -80,3 +80,5 @@ jobs:
       - run: pnpm build
       # Packed tarball import test: every entry loads without the optional nodemailer except ./smtp.
       - run: pnpm check:imports
+      # Packed docs contract: README sections, exports and errors documented, README examples compile and run.
+      - run: pnpm test:package

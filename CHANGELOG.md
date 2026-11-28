@@ -4,10 +4,15 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.1] - Unreleased
+## [0.1.1] - 2026-11-28
 
 ### Added
 
+- `pnpm test:package` (run by the CI Build job) installs the packed package with the lowest
+  supported convex, checks the docs contract (README sections and order, every public export and
+  every thrown error documented, relative links, footer, Links and llms.txt Ecosystem blocks),
+  type-checks every README example against the installed `dist` and runs the README test.
+  `pnpm lint` runs the contract's own test (`scripts/test-check-documentation.mjs`).
 - The npm tarball now ships `docs/API.md`, `CHANGELOG.md` and `llms.txt` next to `README.md`, so
   coding agents can read docs that match the installed version from
   `node_modules/@vllnt/convex-email/`. `README.md` and `llms.txt` gain a "For coding agents" note,
@@ -40,6 +45,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- README, `llms.txt` and `docs/API.md` rewritten for coding agents: when to use, a Quick start
+  that enqueues, sends over JMAP and reads the status, common tasks, every error with its fix,
+  limits, and compatibility. `package.json` `description` and `keywords` updated to match. TSDoc
+  added for the `convex.config` default export, with a `@see` link to the package page on
+  `Email`; `subjectRef` TSDoc no longer suggests a listing method that does not exist.
 - `package.json` `homepage` is now `https://oss.vllnt.com/packages/convex-email`. `llms.txt` links
   to shipped files are relative; links to files outside the package are absolute GitHub URLs.
 - The Publish workflow publishes a `canary` on every push to `main` that touches the package or its
