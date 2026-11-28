@@ -125,14 +125,17 @@ try {
     `
 import { Email } from "${metadata.name}";
 import type { ComponentApi } from "${metadata.name}/_generated/component.js";
+import type { ComponentApi as BareComponentApi } from "${metadata.name}/_generated/component";
 import config from "${metadata.name}/convex.config.js";
+import bareConfig from "${metadata.name}/convex.config";
 import { createJmapSender } from "${metadata.name}/jmap";
 import { createSmtpSender } from "${metadata.name}/smtp";
 import { defineApp } from "convex/server";
 declare const component: ComponentApi;
 const client = new Email(component);
-const app = defineApp(); app.use(config);
-void client; void createJmapSender; void createSmtpSender;
+const app = defineApp(); app.use(config); app.use(bareConfig, { name: "bare" });
+const bare: BareComponentApi = component;
+void client; void bare; void createJmapSender; void createSmtpSender;
 `,
   );
   compile(["consumer.ts"], "NodeNext", "node");

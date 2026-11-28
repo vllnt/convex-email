@@ -48,6 +48,8 @@ jobs:
       - run: pnpm typecheck:ci
       - run: pnpm test:coverage
       - run: pnpm build
+      - run: pnpm check:imports
+      - run: pnpm test:package
 
   canary:
     name: Publish Canary
