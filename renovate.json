@@ -5,7 +5,7 @@
   "minimumReleaseAge": "7 days",
   "packageRules": [
     {
-      "matchPackageNames": ["@vllnt/*"],
+      "matchPackageNames": ["@vllnt/**"],
       "minimumReleaseAge": null
     }
   ]

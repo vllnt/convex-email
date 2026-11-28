@@ -1,5 +1,6 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import {
+  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -89,16 +90,18 @@ function tryImport(consumer, specifier, mustExport) {
 }
 
 /**
- * Install packages into the consumer project with npm.
+ * Install packages into the consumer project with pnpm, which applies the
+ * release-age gate copied from this repository's `pnpm-workspace.yaml`.
  *
  * @param {string} consumer - Consumer project directory.
  * @param {string[]} packages - Package specs or tarball paths.
  */
-function npmInstall(consumer, packages) {
+function pnpmAdd(consumer, packages) {
+  // pnpm prints errors (such as a release-age refusal) on stdout; show only those.
   execFileSync(
-    "npm",
-    ["install", "--ignore-scripts", "--no-audit", "--no-fund", ...packages],
-    { cwd: consumer, stdio: ["ignore", "ignore", "pipe"] },
+    "pnpm",
+    ["add", "--ignore-scripts", "--loglevel", "error", ...packages],
+    { cwd: consumer, stdio: ["ignore", "inherit", "inherit"] },
   );
 }
 
@@ -144,9 +147,21 @@ try {
   mkdirSync(consumer);
   writeFileSync(
     join(consumer, "package.json"),
-    JSON.stringify({ name: "consumer", private: true, type: "module" }),
+    JSON.stringify({
+      name: "consumer",
+      // The same pnpm as this repository (it applies the release-age gate).
+      packageManager: manifest.packageManager,
+      private: true,
+      type: "module",
+    }),
   );
-  npmInstall(consumer, [
+  // No lockfile here, so the repo's release-age gate keeps floating transitive
+  // dependencies off releases younger than the repo allows.
+  copyFileSync(
+    join(directory, "pnpm-workspace.yaml"),
+    join(consumer, "pnpm-workspace.yaml"),
+  );
+  pnpmAdd(consumer, [
     join(workspace, tarball),
     `convex@${installedVersion(directory, "convex")}`,
   ]);
@@ -175,7 +190,7 @@ try {
     }
   }
 
-  npmInstall(consumer, [
+  pnpmAdd(consumer, [
     `nodemailer@${installedVersion(directory, "nodemailer")}`,
   ]);
   const smtp = tryImport(
