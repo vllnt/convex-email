@@ -11,8 +11,10 @@ Convex agent skills for common tasks can be installed by running `npx convex ai-
 `example/convex/_generated/ai/guidelines.md` is generated and git-ignored, so a fresh clone lacks it.
 To create it, run `pnpm exec convex ai-files install` from the repository root (it needs network
 access). The command also rewrites the Convex block above and adds `CLAUDE.md` and `.claude/`, which
-this repo bans: run `git restore AGENTS.md`, then delete `CLAUDE.md` and `.claude/`. If you cannot
-run it, follow the [Convex docs](https://docs.convex.dev) instead.
+this repo bans: run `git restore AGENTS.md`, then delete `CLAUDE.md` and `.claude/`. It also writes
+the git-ignored `.agents/skills/` and `skills-lock.json`, and fetches agent skills with `npx`
+(an unpinned package outside this repo's release-age gate). If you cannot run it, follow the
+[Convex docs](https://docs.convex.dev) instead.
 
 # @vllnt/convex-email
 
