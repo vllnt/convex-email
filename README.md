@@ -167,6 +167,11 @@ is `^8.0.4 || ^9.0.0 || ^10.0.0`, but 10.1.4 is the first release without a
 published advisory (8.x and 9.x still carry addressparser DoS and
 recipient-domain bypass advisories). nodemailer 10 needs Node 20+.
 
+Importing `@vllnt/convex-email/smtp` requires `nodemailer` to be installed, even
+for the pure helpers (`sendViaSmtp`, `validateSmtpConfig`, `toMailOptions`);
+without it the import fails with `ERR_MODULE_NOT_FOUND`. `@vllnt/convex-email`
+and `@vllnt/convex-email/jmap` never need it.
+
 ```ts
 "use node";
 import { createSmtpSender } from "@vllnt/convex-email/smtp";

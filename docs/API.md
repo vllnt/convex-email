@@ -181,7 +181,10 @@ SMTP** (Stalwart, Postfix, any server). The real send runs in the **host's own
 sends. The SMTP server is host config. `nodemailer` is an **optional peer
 dependency** (`^8.0.4 || ^9.0.0 || ^10.0.0`); importing this entry is the
 opt-in, and a backend-only consumer (importing only `@vllnt/convex-email`) pulls
-zero SMTP code.
+zero SMTP code. Importing `@vllnt/convex-email/smtp` requires `nodemailer` to be
+installed, even for the pure helpers (`sendViaSmtp`, `validateSmtpConfig`,
+`toMailOptions`); without it the import fails with `ERR_MODULE_NOT_FOUND`.
+`@vllnt/convex-email` and `@vllnt/convex-email/jmap` never need it.
 
 > The range floor `nodemailer@^8.0.4` is the first release fixing the
 > `envelope.size` CRLF SMTP-command-injection advisory (GHSA-c7w3-x93f-qmm8 /
