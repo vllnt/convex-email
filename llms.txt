@@ -1,20 +1,56 @@
 # @vllnt/convex-email
 
-> Durable, transport-agnostic outbound transactional email queue — enqueue, retry, idempotent enqueue, and per-message delivery status as a Convex component
+> TypeScript Convex component for outbound transactional email: durable send queue, retry budget, idempotent enqueue, delivery status, SMTP and JMAP senders.
 
-`@vllnt/convex-email` is a publishable Convex component. It targets `convex@^1.45.0` (and an OPTIONAL `nodemailer@^8.0.4 || ^9.0.0 || ^10.0.0` peer, only for the generic SMTP transport: importing `@vllnt/convex-email/smtp` requires `nodemailer` installed, even for its pure helpers; `@vllnt/convex-email` and `@vllnt/convex-email/jmap` never need it).
-It stores one sandboxed table - `messages` (named by a host-opaque `messageId`, carrying opaque `to`/`from` addresses, a host-supplied `transport` adapter tag, a `status` of `queued`/`sending`/`sent`/`failed`, an opaque host `payload`, `attempts`/`maxAttempts` retry bookkeeping, an optional `idempotencyKey`/`subjectRef`/`providerId`/`error`, and `createdAt`/`updatedAt` server timestamps). A host mutation calls `enqueue(messageId, to, from, transport, opts?)` to record the message in `queued` and gets its id back immediately; the host's OWN transport sender then claims it with `markSending`, dispatches it through whatever adapter the host configured (JMAP, an HTTP API, an SMTP-relay shim), and reports the outcome with `markSent(providerId?)` or `markFailed(error?)`; clients poll `get(messageId)` or page `listByStatus(status, paginationOpts)` (reactively in Convex). PROVIDER-NEUTRAL - the component records send intent and status and NEVER calls a mail provider; the transport (Stalwart, Resend, SES, Postmark, an SMTP relay) is host config. `markFailed` re-queues the message while `attempts < maxAttempts`, else lands it in terminal `failed`; the host owns the backoff timing. Terminal states are final - any transition out of `sent`/`failed` is rejected, so a late or duplicate delivery callback never overwrites a recorded outcome. An `idempotencyKey` dedups a re-enqueue while the existing row remains; this is not exactly-once provider delivery. Time is read from the server clock inside every handler - no caller-supplied clock. A bounded, self-rescheduling `prune` (and a built-in daily cron) sweeps terminal messages past a retention window. The host owns the transport, auth, and the `payload` type (the client is generic over it, with an optional `payloadValidator` parser narrowing the opaque stored value at the boundary - never a `v.any()` dump); the component owns only the queue/retry/status core. Mount-safe: it runs correctly under multiple named `app.use` mounts. OPTIONAL GENERIC SMTP TRANSPORT - a separate `@vllnt/convex-email/smtp` export sends a queued message over any SMTP server (Stalwart, Postfix, any provider's relay; the server is host config). The real `nodemailer` send runs in the HOST's own `"use node"` action; the component itself never sends. `nodemailer` (`^8.0.4 || ^9.0.0 || ^10.0.0`) is an OPTIONAL peer dependency (the queue core has zero third-party runtime deps); the floor is the release fixing the `envelope.size` CRLF injection advisory GHSA-c7w3-x93f-qmm8, and `^10.1.4` (Node 20+) is the first release without a published advisory, so prefer it. The adapter is two layers - a PURE, injectable `sendViaSmtp(transport, message, config?)` plus `validateSmtpConfig`/`toMailOptions` (driven by an injected transport, also rejecting CRLF header injection), and a THIN real-`nodemailer` wrapper `createSmtpTransport`/`createSmtpSender`. The host wires the queue to it: page `queued` -> `markSending` -> send -> `markSent(providerId)`/`markFailed(error)`. OPTIONAL GENERIC JMAP TRANSPORT - a second `@vllnt/convex-email/jmap` export sends over any JMAP server's HTTP API (Stalwart, Fastmail, Cyrus, Apache James) from a PLAIN Convex action - JMAP is HTTP, so the host's injected `fetch` runs in V8 with NO `"use node"`, NO `nodemailer`, and zero extra dependencies; it is a protocol not a vendor (`./jmap`, never `./stalwart`). The whole adapter is pure (an injected `fetch`) and 100%-covered: `sendViaJmap(fetchFn, message, config)`, `discoverJmapSession(fetchFn, opts)` (resolves accountId/identityId/Sent-mailbox from the JMAP session), `createJmapSender(config, fetchFn)`, plus the pure builders `validateJmapConfig`/`buildEmailCreate`/`buildSubmitRequest`/`parseSubmitResponse`; it rejects CRLF header injection and sends via the two-call JMAP batch (`Email/set` create -> `EmailSubmission/set` submit). A host can route BOTH transports off one queue by the per-message `transport` tag (`flushQueuedRouted` in the repository's example app).
+Install `@vllnt/convex-email` (builds from `main` use the `canary` dist-tag).
+Peer dependency `convex@^1.45.0`; optional `nodemailer@^8.0.4 || ^9.0.0 ||
+^10.0.0` only for `@vllnt/convex-email/smtp`. ES modules only. Mount it with
+`app.use(email)` from `@vllnt/convex-email/convex.config` and call it through
+`new Email<TPayload>(components.email, { payloadValidator?, maxAttempts? })`
+from host functions. Methods: `enqueue(ctx, messageId, to, from, transport,
+opts?)`, `markSending`, `markSent(ctx, id, { providerId? })`,
+`markFailed(ctx, id, { error? })`, `get`, `listByStatus(ctx, status,
+paginationOpts)`, `prune(ctx, { before?, batch? })`. Lifecycle: `queued` ->
+`sending` (`markSending`, `attempts + 1`) -> `sent`, or back to `queued` via
+`markFailed` while `attempts < maxAttempts` (default 5), else `failed`. `sent`
+and `failed` are final. The component stores the message and its status; it
+never sends email and never reads auth. Your action claims a message, sends it
+with `createJmapSender` (`./jmap`, plain `fetch`, default runtime) or
+`createSmtpSender` (`./smtp`, needs `nodemailer` and `"use node"`), then calls
+`markSent` or `markFailed`, and schedules retries itself. An `idempotencyKey`
+returns the existing message (`deduplicated: true`). Errors are `ConvexError`s
+with `data.code` `INVALID_ARGUMENT`, `INVALID_MAX_ATTEMPTS`,
+`DUPLICATE_MESSAGE`, `NOT_FOUND`, `TERMINAL_STATE`, `INVALID_TRANSITION`,
+`INVALID_BATCH` or `INVALID_BEFORE`. A daily cron deletes `sent`/`failed`
+messages 30 days after their last update (`prune` batch 200, range 1..500).
+There is no lease for a message stuck in `sending`, no exactly-once delivery
+and no React entry.
 
-These docs ship inside the npm package and describe the installed version; the copy on GitHub `main` can be ahead of npm `latest`. Enqueue options are payload, subjectRef, idempotencyKey, maxAttempts (default budget 5); use the returned messageId on deduplication. markSent(ctx, id, { providerId }) / markFailed(ctx, id, { error }) take options objects. markSent on sent is an idempotent no-op; both outcome methods also accept queued rows. The host owns retries, backoff, and crashed-sender recovery; an ambiguous provider success must be reconciled rather than blindly resent. Prune defaults to 30-day terminal updatedAt retention and batch 200 (1–500), with INVALID_BATCH/INVALID_BEFORE validation; the daily cron is not reconfigured by custom calls. Host parsers are `(unknown) => T`, not `v.*.parse`.
+## When to use
+
+- Use it when a mutation must record an outbound email and return before the
+  email is sent.
+- Use it when you send through your own SMTP or JMAP server, or another
+  transport you call from a Convex action.
+- Use it when you need a per-message status (`queued`, `sending`, `sent`,
+  `failed`) and a cap on send attempts.
+- Use it when a retried request must not queue the same email twice.
+- Do not use it when the message is an in-app inbox item with read/unread
+  state: use `@vllnt/convex-notifications`.
+- Do not use it when you want a component that calls the Resend API itself and
+  tracks delivery webhooks: use `@convex-dev/resend`.
 
 ## For coding agents
 
-The docs are bundled with the package at `node_modules/@vllnt/convex-email/docs/`, next to `README.md`, `CHANGELOG.md` and this file. They match the installed version. Read them before writing code against this package.
+The docs are bundled in the package at `node_modules/@vllnt/convex-email/` and
+match the installed version. Read them, and the shipped `src/`, before writing
+code. The links below to `./` paths are files inside the installed package.
 
 ## Docs
 
-- [README](./README.md): Project overview, installation, usage examples, architecture
-- [API Reference](./docs/API.md): Public class methods, return shapes, error codes, cron, SMTP and JMAP transports
+- [README](./README.md): Install, quick start, common tasks, limits
+- [API Reference](./docs/API.md): Every export, signature, default and lifecycle rule
+- [Errors and fixes](./README.md#errors-and-fixes): Every error code and message, its cause and the fix
 - [Changelog](./CHANGELOG.md): Version history and release notes
 - [License](./LICENSE): MIT license
 
@@ -22,18 +58,23 @@ The docs are bundled with the package at `node_modules/@vllnt/convex-email/docs/
 
 Repository only, not in the npm package:
 
-- [Example component wrapper](https://github.com/vllnt/convex-email/blob/main/example/convex/example.ts): Host-app wrapper functions
-- [Example tests](https://github.com/vllnt/convex-email/blob/main/example/convex/example.test.ts): End-to-end usage coverage with `convex-test`
+- [Example host functions](https://github.com/vllnt/convex-email/blob/main/example/convex/example.ts): Host wrappers, and SMTP, JMAP and routed send loops with fake transports
+- [Example tests](https://github.com/vllnt/convex-email/blob/main/example/convex/example.test.ts): End-to-end usage with `convex-test`
 
 ## Optional
 
 Repository only, not in the npm package:
 
 - [Contributing](https://github.com/vllnt/convex-email/blob/main/CONTRIBUTING.md): Development setup, validation commands, release workflow
-- [AGENTS](https://github.com/vllnt/convex-email/blob/main/AGENTS.md): Agent instructions for contributors to this repository
+- [AGENTS](https://github.com/vllnt/convex-email/blob/main/AGENTS.md): Instructions for contributors to this repository
 - [Security Policy](https://github.com/vllnt/convex-email/blob/main/SECURITY.md): Vulnerability reporting policy
 - [Code of Conduct](https://github.com/vllnt/convex-email/blob/main/CODE_OF_CONDUCT.md): Community participation guidelines
 
 ## Ecosystem
 
-- [vllnt oss](https://oss.vllnt.com/llms.txt): Index of the other vllnt open-source packages
+- [Package page](https://oss.vllnt.com/packages/convex-email)
+- [Release feed](https://oss.vllnt.com/packages/convex-email/rss.xml)
+- [All @vllnt packages](https://oss.vllnt.com/llms.txt)
+- [Search vllnt packages and docs](https://index.vllnt.com)
+- [vllnt](https://vllnt.com/llms.txt)
+- [Author](https://bntvllnt.com)

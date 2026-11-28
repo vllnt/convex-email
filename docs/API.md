@@ -1,441 +1,624 @@
 # API Reference — @vllnt/convex-email
 
-**Compatibility:** `convex@^1.45.0` · optional
-`nodemailer@^8.0.4 || ^9.0.0 || ^10.0.0` (only for the
-[SMTP transport](#smtp-transport-optional--vllntconvex-emailsmtp)). The
-[JMAP transport](#jmap-transport-optional--vllntconvex-emailjmap) is
-`fetch`-based and needs no extra dependency.
+**Compatibility:** `convex@^1.45.0`; optional
+`nodemailer@^8.0.4 || ^9.0.0 || ^10.0.0`, only for
+[`@vllnt/convex-email/smtp`](#smtp-transport). ES modules only.
 
 ## Entry points
 
-| Import                                      | Provides                                                                                                                                                  |
-| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@vllnt/convex-email`                       | The `Email<TPayload>` client and the types `EmailComponent`, `EmailOptions`, `EnqueueOptions`, `EnqueueResult`, `MarkFailedResult`, `MessageStatus`, `MessageView`, `Parser`. |
-| `@vllnt/convex-email/convex.config`         | The component definition (default export) for `app.use(...)`.                                                                                             |
-| `@vllnt/convex-email/_generated/component`  | The `ComponentApi` type of the mounted component.                                                                                                         |
-| `@vllnt/convex-email/smtp`                  | The optional [SMTP transport](#smtp-transport-optional--vllntconvex-emailsmtp).                                                                           |
-| `@vllnt/convex-email/jmap`                  | The optional [JMAP transport](#jmap-transport-optional--vllntconvex-emailjmap).                                                                           |
-| `@vllnt/convex-email/test`                  | `register` for [`convex-test`](#test-helper--vllntconvex-emailtest).                                                                                      |
+| Import                                                | Exports                                                                                                                                                         |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@vllnt/convex-email`                                 | `Email` class; types `EmailComponent`, `EmailOptions`, `EnqueueOptions`, `EnqueueResult`, `MarkFailedResult`, `MessageStatus`, `MessageView`, `Parser`          |
+| `@vllnt/convex-email/jmap`                            | [JMAP transport](#jmap-transport): `createJmapSender`, `sendViaJmap`, `discoverJmapSession`, builders and types. No extra dependency, default Convex runtime    |
+| `@vllnt/convex-email/smtp`                            | [SMTP transport](#smtp-transport): `createSmtpSender`, `createSmtpTransport`, `sendViaSmtp`, helpers and types. Needs `nodemailer` and a `"use node"` action   |
+| `@vllnt/convex-email/convex.config` (or `.js`)        | default component config for `app.use(...)`                                                                                                                     |
+| `@vllnt/convex-email/test`                            | `register(t, name = "email")` for `convex-test` (TypeScript source; needs Vite `import.meta.glob`)                                                              |
+| `@vllnt/convex-email/_generated/component` (or `.js`) | type `ComponentApi`                                                                                                                                             |
 
-Construct the client with the mounted component and optional host config:
+The component stores one table, `messages`, reachable only through its
+functions. It records each message and its status; it never calls a mail
+server and never reads auth. Every handler stamps `createdAt` and `updatedAt`
+from the server clock; no method takes a caller-supplied time.
 
-```ts
-import { Email } from "@vllnt/convex-email";
+## Lifecycle
 
-const email = new Email<{ subject: string; html: string }>(components.email, {
-  payloadValidator: (value) => {
-    if (
-      typeof value !== "object" ||
-      value === null ||
-      !("subject" in value) ||
-      !("html" in value) ||
-      typeof value.subject !== "string" ||
-      typeof value.html !== "string"
-    ) {
-      throw new Error("Expected subject and html strings");
-    }
-    return { subject: value.subject, html: value.html };
-  },
-  maxAttempts: 5, // default retry budget (per-message override at enqueue)
-});
+```text
+enqueue ──> queued ──markSending──> sending ──markSent──> sent (terminal)
+              ^                        │
+              └──markFailed, retried───┤
+                                       └──markFailed, attempts used up──> failed (terminal)
 ```
 
-`Email<TPayload = unknown>` is generic over the host's opaque `payload` type.
-All methods take the host `ctx` (a query or mutation context) as the first
-argument.
+- `markSending` moves `queued` to `sending` and adds 1 to `attempts`.
+- `markFailed` returns the message to `queued` while `attempts < maxAttempts`,
+  else moves it to `failed`.
+- `markSent` and `markFailed` also accept a `queued` message.
+- Nothing moves a message out of `sent` or `failed` (`TERMINAL_STATE`), except
+  that `markSent` on a `sent` message is a no-op.
 
-**Provider-neutral.** The component records send _intent_ and _status_ — it
-never calls a mail provider. `transport` is an opaque host-supplied string tag
-naming the adapter the host drives (`markSending` → host send →
-`markSent`/`markFailed`).
+## Client
 
-**Time is server-sourced.** Every handler stamps `createdAt`/`updatedAt` from
-`Date.now()` itself; no method accepts a caller-supplied clock.
-
-**Validation.** When `payloadValidator` is set it runs at the client boundary:
-over the value written by `enqueue` (before storage) and over the value returned
-by `get` / `listByStatus` (on read). It must return the typed value or throw.
-Omit it to leave the opaque payload unvalidated.
-
-## Mutations
-
-### `enqueue(ctx, messageId, to, from, transport, opts?) → { messageId, deduplicated }`
-
-`opts`:
-`{ payload?: TPayload; subjectRef?: string; idempotencyKey?: string; maxAttempts?: number }`.
-
-Enqueue an outbound message and return its id immediately (the durable queue
-entry). The message is inserted in `queued` with `attempts: 0` and
-`createdAt`/`updatedAt` stamped from the server clock. `messageId` is
-host-supplied and **must be unique**; `to`/`from` are opaque addresses;
-`transport` is the host-configured adapter name; `payload` is opaque host data
-validated against `payloadValidator` before storage.
-
-When `opts.idempotencyKey` matches an existing message the existing id is
-returned (`deduplicated: true`) and no new row is inserted — a retried enqueue
-can never queue a second row while the original is retained. Always use the
-returned id; pruning removes its dedup key. This does not guarantee exactly-once
-delivery at the provider. A bare duplicate `messageId` (no key) throws
-`ConvexError({ code: "DUPLICATE_MESSAGE" })`.
-
-### `markSending(ctx, messageId) → { attempts }`
-
-Claim a `queued` message for a send attempt: move it to `sending` and increment
-`attempts` (returned). A transport sender calls this before dispatching so
-concurrent flushers don't double-send the same row. Rejects a missing id
-(`NOT_FOUND`), a terminal message (`TERMINAL_STATE`), and an already-`sending`
-message (`INVALID_TRANSITION` — another sender owns it).
-
-### `markSent(ctx, messageId, opts?) → null`
-
-`opts`: `{ providerId?: string }`.
-
-Record a successful send — the message moves to terminal `sent`, recording the
-transport's own `opts.providerId` (its message handle, opaque to the component)
-and clearing any prior `error`. Idempotent against a replayed callback:
-re-marking an already-`sent` message is a no-op (the recorded `providerId` is
-preserved). Rejects a missing id (`NOT_FOUND`) and an already-`failed` message
-(`TERMINAL_STATE`). A `queued` row also permits this transition; the host is
-responsible for claim/send/report discipline.
-
-### `markFailed(ctx, messageId, opts?) → { status, retried }`
-
-`opts`: `{ error?: string }`. Returns
-`{ status: "queued" | "failed"; retried: boolean }`.
-
-Record a failed send attempt, recording `opts.error`. While
-`attempts < maxAttempts` the message returns to `queued` for another attempt
-(`retried: true`); once attempts are exhausted it lands in terminal `failed`
-(`retried: false`). The host's backoff scheduler re-claims a re-queued message
-when ready. Rejects a missing id (`NOT_FOUND`) and an already-terminal
-`sent`/`failed` message (`TERMINAL_STATE`). A `queued` row also permits this
-call; only `markSending` increments attempts. No automatic backoff, send, or
-crashed-worker lease recovery is provided. A provider success followed by a
-status-write failure is ambiguous: reconcile it instead of blindly calling
-`markFailed` and resending.
-
-### `prune(ctx, opts?) → number`
-
-`opts`: `{ before?: number; batch?: number }` (defaults:
-`before = Date.now() - 30 days`, `batch = 200`; valid batch range: 1–500).
-
-Delete up to `batch` **terminal** messages whose `updatedAt < before`, oldest
-first (`sent` then `failed`, each via the `by_status_updated` index), and return
-the count removed in the first pass. Queued and sending messages are never
-pruned. If a full batch was removed the sweep self-reschedules through the
-component scheduler until the terminal tail is clean. Idempotent — safe to run
-anytime. A built-in daily cron drives it automatically; call `prune` directly
-only for an extra or custom-cadence sweep.
-
-## Queries
-
-### `get(ctx, messageId) → MessageView | null`
-
-The current envelope for `messageId`, or `null` if no such message is held.
-`MessageView` is
-`{ messageId, to, from, transport, status, payload?, subjectRef?, idempotencyKey?, providerId?, attempts, maxAttempts, error?, createdAt, updatedAt }`;
-`payload` is narrowed by the host validator when set.
-
-### `listByStatus(ctx, status, paginationOpts) → PaginationResult<MessageView>`
-
-Page messages in one `status` (`"queued" | "sending" | "sent" | "failed"`),
-oldest first via the `by_status` index. Takes the standard Convex
-`paginationOpts` and returns the standard paginated envelope (`page`, `isDone`,
-`continueCursor`) with each row narrowed to the typed view. Poll `queued` to
-flush, watch `sending`, or audit a terminal `sent`/`failed` history reactively.
-
-## Error codes
-
-Coded `ConvexError`s thrown by the component (`error.data.code`):
-
-| Code                 | Thrown by                               | Meaning                                                                           |
-| -------------------- | --------------------------------------- | --------------------------------------------------------------------------------- |
-| `INVALID_BATCH`      | `prune`                                 | Batch must be a finite integer from 1–500.                                        |
-| `INVALID_BEFORE`     | `prune`                                 | The cutoff must be finite.                                                        |
-| `INVALID_ARGUMENT`   | `enqueue`                               | `messageId`, `to`, `from`, `transport`, or a supplied `idempotencyKey` is empty.  |
-| `INVALID_MAX_ATTEMPTS` | `enqueue`                             | `maxAttempts` must be a positive integer.                                          |
-| `DUPLICATE_MESSAGE`  | `enqueue`                               | A message with this `messageId` already exists (and no `idempotencyKey` matched). |
-| `NOT_FOUND`          | `markSending`, `markSent`, `markFailed` | No message has this `messageId`.                                                  |
-| `TERMINAL_STATE`     | `markSending`, `markSent`, `markFailed` | The message is already `sent`/`failed` and cannot transition.                     |
-| `INVALID_TRANSITION` | `markSending`                           | The message is already `sending` (claimed by another sender).                     |
-
-## Cron / Maintenance
-
-The component registers one cron (`crons.ts`):
-
-| Job           | Cadence                      | Action                                                                                            |
-| ------------- | ---------------------------- | ------------------------------------------------------------------------------------------------- |
-| `email:prune` | every 24h (`PRUNE_INTERVAL`) | runs `prune` with `batch = PRUNE_BATCH` (200), self-rescheduling until the terminal tail is clean |
-
-Cadence is a static module constant (Convex cron definitions are static per
-deployment). A host wanting a different cadence drives `prune` from its own
-scheduler with an explicit `before` cutoff. This does not reconfigure the
-built-in 30-day sweep or extend its retention. The cron is per-mount, so each
-`app.use(component, { name })` instance prunes its own sandbox independently.
-
-## SMTP transport (optional) — `@vllnt/convex-email/smtp`
-
-A separate, optional export that actually sends a queued message over **generic
-SMTP** (Stalwart, Postfix, any server). The real send runs in the **host's own
-`"use node"` action**, which imports this module; the component itself never
-sends. The SMTP server is host config. `nodemailer` is an **optional peer
-dependency** (`^8.0.4 || ^9.0.0 || ^10.0.0`); importing this entry is the
-opt-in, and a backend-only consumer (importing only `@vllnt/convex-email`) pulls
-zero SMTP code. Importing `@vllnt/convex-email/smtp` requires `nodemailer` to be
-installed, even for the pure helpers (`sendViaSmtp`, `validateSmtpConfig`,
-`toMailOptions`); without it the import fails with `ERR_MODULE_NOT_FOUND`.
-`@vllnt/convex-email` and `@vllnt/convex-email/jmap` never need it.
-
-> The range floor `nodemailer@^8.0.4` is the first release fixing the
-> `envelope.size` CRLF SMTP-command-injection advisory (GHSA-c7w3-x93f-qmm8 /
-> CVE-2025-14874); the adapter additionally rejects CR/LF in every address,
-> subject, and header value it sets.
->
-> Prefer `nodemailer@^10.1.4`, the first release without a published advisory
-> (8.x and 9.x still carry addressparser DoS and recipient-domain bypass
-> advisories). nodemailer 10 needs Node 20+ and ships its own types. nodemailer
-> 9 validates TLS certificates by default when fetching remote content; the
-> adapter never fetches remote content (it passes only host, port, secure, auth
-> and plain-string message fields), so the upgrade needs no config change.
-
-### Types
+### `Email`
 
 ```ts
-interface SmtpConfig {
-  host: string;
-  port: number;
-  secure?: boolean; // defaults to true for port 465, else false
-  auth?: { user: string; pass: string }; // omit for an unauthenticated relay
-  from?: string; // default From when a message omits one
+new Email<TPayload = unknown>(component: EmailComponent, options?: EmailOptions<TPayload>)
+```
+
+`component` is the mounted component, `components.email` (or the name passed
+to `app.use`). Every method takes the host `ctx` first: methods that write need
+`ctx.runMutation` (a mutation or action context), `get` and `listByStatus` need
+`ctx.runQuery` (a query, mutation or action context).
+
+`options.payloadValidator` (a [`Parser`](#parser)) runs on the payload passed
+to `enqueue`, before storage, and on every payload returned by `get` and
+`listByStatus`. It must return the typed value or throw. Without it, the
+payload is cast to `TPayload` unchecked. `options.maxAttempts` is the default
+attempt budget for `enqueue` (default 5); it is validated by `enqueue`, not by
+the constructor.
+
+### `enqueue`
+
+```ts
+enqueue(ctx, messageId: string, to: string, from: string, transport: string, opts?: EnqueueOptions<TPayload>): Promise<EnqueueResult>
+```
+
+Inserts a `queued` message with `attempts: 0` and returns
+`{ messageId, deduplicated: false }`. `messageId` is chosen by the host and
+must be unique. `to`, `from` and `transport` are stored as given; `transport`
+is a free-form tag your sender can switch on.
+
+Checks, in order:
+
+1. `messageId`, `to`, `from`, `transport` and a supplied `idempotencyKey` must
+   not be `""` (`INVALID_ARGUMENT`).
+2. `maxAttempts` (`opts.maxAttempts`, else the client default) must be an
+   integer of 1 or more (`INVALID_MAX_ATTEMPTS`).
+3. If a stored message has the same `idempotencyKey`, nothing is inserted and
+   that message's id is returned with `deduplicated: true`, whatever the other
+   arguments are.
+4. If a stored message has the same `messageId`, it throws `DUPLICATE_MESSAGE`.
+
+The payload validator runs before the mutation is called. Pruned messages no
+longer count for step 3 or 4.
+
+### `markSending`
+
+```ts
+markSending(ctx, messageId: string): Promise<{ attempts: number }>
+```
+
+Claims a `queued` message: sets `sending`, adds 1 to `attempts`, returns the
+new count. Throws `NOT_FOUND` for an unknown id, `TERMINAL_STATE` for a `sent`
+or `failed` message and `INVALID_TRANSITION` for a message already `sending`.
+Because it is a mutation, two concurrent claims of one message cannot both
+succeed.
+
+### `markSent`
+
+```ts
+markSent(ctx, messageId: string, opts?: { providerId?: string }): Promise<null>
+```
+
+Sets `sent`, stores `opts.providerId` and clears `error`. On a message already
+`sent` it returns `null` and changes nothing (the first `providerId` is kept).
+Throws `NOT_FOUND` for an unknown id and `TERMINAL_STATE` for a `failed`
+message. A `queued` message is accepted too.
+
+### `markFailed`
+
+```ts
+markFailed(ctx, messageId: string, opts?: { error?: string }): Promise<MarkFailedResult>
+```
+
+Stores `opts.error`. If `attempts < maxAttempts` the message becomes `queued`
+and the result is `{ status: "queued", retried: true }`; otherwise it becomes
+`failed` and the result is `{ status: "failed", retried: false }`. It sends
+nothing and schedules nothing: the host schedules the next attempt. Throws
+`NOT_FOUND` for an unknown id and `TERMINAL_STATE` for a `sent` or `failed`
+message. A `queued` message is accepted too; it does not change `attempts`.
+
+### `get`
+
+```ts
+get(ctx, messageId: string): Promise<MessageView<TPayload> | null>
+```
+
+Returns the message or `null`. The payload goes through `payloadValidator`
+when one is set.
+
+### `listByStatus`
+
+```ts
+listByStatus(ctx, status: MessageStatus, paginationOpts: PaginationOptions): Promise<PaginationResult<MessageView<TPayload>>>
+```
+
+One page of messages in `status`, ordered by `createdAt`, oldest first (index
+`by_status`). `paginationOpts` is Convex `PaginationOptions`: start with
+`{ cursor: null, numItems: 100 }` and pass `continueCursor` until `isDone`.
+Every row's payload goes through `payloadValidator`.
+
+### `prune`
+
+```ts
+prune(ctx, opts?: { before?: number; batch?: number }): Promise<number>
+```
+
+Deletes up to `batch` messages in `sent`, then `failed`, whose `updatedAt` is
+older than `before`, oldest first (index `by_status_updated`). `queued` and
+`sending` messages are never deleted. Defaults: `before` = server time minus 30
+days, `batch` = 200. `batch` must be an integer in 1..500 (`INVALID_BATCH`);
+`before` must be finite (`INVALID_BEFORE`). When a full batch is deleted it
+schedules another pass with the same `before`. Returns the number deleted by
+this call, not by later passes. Deleting a message also frees its `messageId`
+and `idempotencyKey`.
+
+## Types
+
+### `EmailComponent`
+
+The function references of the mounted component, as `components.email`. The
+generated `ComponentApi` of a mount is assignable to it.
+
+### `EmailOptions`
+
+```ts
+interface EmailOptions<TPayload> {
+  payloadValidator?: Parser<TPayload>;
+  maxAttempts?: number; // default 5
 }
-interface SmtpMessage {
-  to: string;
-  from?: string; // falls back to SmtpConfig.from
-  subject?: string;
-  text?: string;
-  html?: string; // one of text/html is required
-  replyTo?: string;
-  headers?: Record<string, string>;
+```
+
+### `EnqueueOptions`
+
+```ts
+interface EnqueueOptions<TPayload> {
+  payload?: TPayload;
+  subjectRef?: string; // stored and returned; no method lists by it
+  idempotencyKey?: string;
+  maxAttempts?: number; // overrides EmailOptions.maxAttempts for this message
 }
-interface SmtpMailOptions {
-  // what toMailOptions returns: SmtpMessage with `from` resolved
+```
+
+### `EnqueueResult`
+
+```ts
+interface EnqueueResult {
+  messageId: string; // the existing message's id when deduplicated
+  deduplicated: boolean;
+}
+```
+
+### `MarkFailedResult`
+
+```ts
+interface MarkFailedResult {
+  status: "queued" | "failed";
+  retried: boolean; // true when the message went back to queued
+}
+```
+
+### `MessageStatus`
+
+```ts
+type MessageStatus = "queued" | "sending" | "sent" | "failed";
+```
+
+### `MessageView`
+
+```ts
+interface MessageView<TPayload = unknown> {
+  messageId: string;
   to: string;
   from: string;
+  transport: string;
+  status: MessageStatus;
+  payload?: TPayload | undefined;
+  subjectRef?: string | undefined;
+  idempotencyKey?: string | undefined;
+  providerId?: string | undefined; // set by markSent
+  attempts: number; // markSending calls so far
+  maxAttempts: number;
+  error?: string | undefined; // from the last markFailed; cleared by markSent
+  createdAt: number; // ms since epoch
+  updatedAt: number; // ms since epoch, last change
+}
+```
+
+### `Parser`
+
+```ts
+type Parser<T> = (value: unknown) => T;
+```
+
+Returns the typed value or throws. A Zod schema's `.parse` fits; a
+`convex/values` validator has no `.parse`, so write a function.
+
+## Errors
+
+Component errors are `ConvexError`s whose `data` is `{ code, message }`
+(`error.data.code`).
+
+| Code                   | Thrown by                                | Message                                                           |
+| ---------------------- | ---------------------------------------- | ----------------------------------------------------------------- |
+| `INVALID_ARGUMENT`     | `enqueue`                                | `<field> must not be empty`                                       |
+| `INVALID_MAX_ATTEMPTS` | `enqueue`                                | `maxAttempts must be a positive integer`                          |
+| `DUPLICATE_MESSAGE`    | `enqueue`                                | `message "<messageId>" already exists`                            |
+| `NOT_FOUND`            | `markSending`, `markSent`, `markFailed`  | `message "<messageId>" not found`                                 |
+| `TERMINAL_STATE`       | `markSending`, `markFailed`              | `message "<messageId>" is already <status> and cannot transition` |
+| `TERMINAL_STATE`       | `markSent` (on a `failed` message)       | `message "<messageId>" is already failed and cannot transition`   |
+| `INVALID_TRANSITION`   | `markSending`                            | `message "<messageId>" is already sending`                        |
+| `INVALID_BATCH`        | `prune`                                  | `batch must be an integer between 1 and 500`                      |
+| `INVALID_BEFORE`       | `prune`                                  | `before must be finite`                                           |
+
+The JMAP and SMTP helpers throw a plain `Error`:
+
+| Message                                                                     | Thrown by                                                       |
+| --------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| ``jmap config: `<key>` must be a non-empty string``                         | `validateJmapConfig`, `sendViaJmap`, `createJmapSender`         |
+| ``jmap message: `to` must be a non-empty string``                           | `buildEmailCreate`, `buildSubmitRequest`, `sendViaJmap`         |
+| ``jmap message: `to` must contain at least one address``                    | `buildEmailCreate`, `buildSubmitRequest`, `sendViaJmap`         |
+| ``jmap message: `from` is required (pass `message.from` or `config.from`)`` | `buildEmailCreate`, `buildSubmitRequest`, `sendViaJmap`         |
+| ``jmap message: one of `text` or `html` is required``                       | `buildEmailCreate`, `buildSubmitRequest`, `sendViaJmap`         |
+| ``jmap message: `<field>` must not contain CR or LF``                       | `buildEmailCreate`, `buildSubmitRequest`, `sendViaJmap`         |
+| `jmap: request failed (HTTP <status>)`                                      | `sendViaJmap`, `discoverJmapSession`                            |
+| `jmap: malformed response (no methodResponses)`                             | `sendViaJmap`, `parseSubmitResponse`, `discoverJmapSession`     |
+| `jmap: method error (<type>)`                                               | `sendViaJmap`, `parseSubmitResponse`                            |
+| `jmap: response missing Email/set or EmailSubmission/set`                   | `sendViaJmap`, `parseSubmitResponse`                            |
+| `jmap: <Email or EmailSubmission> not created (<type>)`                     | `sendViaJmap`, `parseSubmitResponse`                            |
+| `jmap: <Email or EmailSubmission> not created (no id in response)`          | `sendViaJmap`, `parseSubmitResponse`                            |
+| ``jmap discover: `sessionUrl` must be a non-empty string``                  | `discoverJmapSession`                                           |
+| ``jmap discover: `token` must be a non-empty string``                       | `discoverJmapSession`                                           |
+| `jmap discover: session request failed (HTTP <status>)`                     | `discoverJmapSession`                                           |
+| `jmap discover: session has no apiUrl`                                      | `discoverJmapSession`                                           |
+| `jmap discover: no primary mail account`                                    | `discoverJmapSession`                                           |
+| `jmap discover: no sending identity found`                                  | `discoverJmapSession`                                           |
+| `jmap discover: no sent or drafts mailbox found`                            | `discoverJmapSession`                                           |
+| ``smtp config: `host` must be a non-empty string``                          | `validateSmtpConfig`, `createSmtpTransport`, `createSmtpSender` |
+| ``smtp config: `port` must be an integer in 1..65535``                      | `validateSmtpConfig`, `createSmtpTransport`, `createSmtpSender` |
+| ``smtp config: `auth` requires string `user` and `pass` ``                  | `validateSmtpConfig`, `createSmtpTransport`, `createSmtpSender` |
+| ``smtp message: `to` must be a non-empty string``                           | `toMailOptions`, `sendViaSmtp`, an `SmtpSender`                 |
+| ``smtp message: `from` is required (pass `message.from` or `config.from`)`` | `toMailOptions`, `sendViaSmtp`, an `SmtpSender`                 |
+| ``smtp message: one of `text` or `html` is required``                       | `toMailOptions`, `sendViaSmtp`, an `SmtpSender`                 |
+| ``smtp message: `<field>` must not contain CR or LF``                       | `toMailOptions`, `sendViaSmtp`, an `SmtpSender`                 |
+
+Causes and fixes: [README, Errors and fixes](../README.md#errors-and-fixes).
+
+## Cron
+
+Each mount registers one cron, `email:prune`: every 24 hours it runs `prune`
+with `batch` 200 and the default 30-day `before`. The cadence is a module
+constant; it cannot be changed or turned off per mount. For a shorter
+retention, call `prune` with your own `before` from a host cron.
+
+## JMAP transport
+
+`@vllnt/convex-email/jmap` sends over any JMAP server (RFC 8620 and 8621)
+through an injected `fetch`, so it runs in a default Convex action: no
+`"use node"`, no dependency. A send is one HTTP request with two method calls:
+`Email/set` (create, id `draft`) then `EmailSubmission/set` (submit `#draft`).
+It rejects CR and LF in `to`, `from`, `replyTo`, `subject` and header names and
+values.
+
+### `createJmapSender`
+
+```ts
+createJmapSender(config: JmapConfig, fetchFn: JmapFetch): JmapSender
+```
+
+Validates `config` now (throws on a bad one) and returns a function that sends
+one `JmapMessage` with `sendViaJmap`.
+
+### `sendViaJmap`
+
+```ts
+sendViaJmap(fetchFn: JmapFetch, message: JmapMessage, config: JmapConfig): Promise<JmapSendResult>
+```
+
+Validates `config`, builds the request with `buildSubmitRequest`, POSTs it to
+`config.endpoint` with `Authorization: Bearer <token>`, and parses the reply
+with `parseSubmitResponse`. Throws on a non-2xx status or a JMAP error. Store
+the returned `messageId` (the `EmailSubmission` id) as `providerId`.
+
+### `discoverJmapSession`
+
+```ts
+discoverJmapSession(fetchFn: JmapFetch, opts: JmapDiscoverOptions): Promise<JmapConfig>
+```
+
+GETs `opts.sessionUrl` for the `apiUrl` and the primary
+`urn:ietf:params:jmap:mail` account, then calls `Identity/get` and
+`Mailbox/get`. The identity is the one whose email matches `opts.from`
+(case-insensitive), else the first. The mailbox is the one with role `sent`,
+else `drafts`, else the first. The result's `from` is `opts.from`, else the
+identity's email. Three HTTP requests; run it once and keep the result.
+
+### `validateJmapConfig`
+
+```ts
+validateJmapConfig(config: JmapConfig): JmapConfig
+```
+
+Throws unless `endpoint`, `token`, `accountId`, `identityId` and `mailboxId`
+are non-empty strings (after trimming). Returns `config` unchanged.
+
+### `buildEmailCreate`
+
+```ts
+buildEmailCreate(message: JmapMessage, config: Pick<JmapConfig, "from" | "mailboxId">): {
+  email: Record<string, unknown>;
+  envelope: { mailFrom: { email: string }; rcptTo: Array<{ email: string }> };
+}
+```
+
+The `Email/set` create object and the submission envelope. `from` is
+`message.from`, else `config.from`. `to` is split on commas. With both `text`
+and `html` the body is `multipart/alternative`. Each header becomes a
+`header:<Name>:asText` property. The email is filed in `config.mailboxId` with
+the `$seen` keyword. The return type is not exported by name.
+
+### `buildSubmitRequest`
+
+```ts
+buildSubmitRequest(message: JmapMessage, config: JmapConfig): { using: string[]; methodCalls: unknown[] }
+```
+
+The full request body: `using` the core, mail and submission capabilities,
+then `Email/set` and `EmailSubmission/set` (with `config.identityId` and the
+envelope).
+
+### `parseSubmitResponse`
+
+```ts
+parseSubmitResponse(json: unknown): JmapSendResult
+```
+
+Throws on a malformed body, an `error` method response, a missing call or a
+`notCreated` entry; otherwise returns the created `Email` id and
+`EmailSubmission` id.
+
+### `JmapConfig`
+
+```ts
+interface JmapConfig {
+  endpoint: string; // the session's apiUrl
+  token: string; // bearer token; keep it server-side
+  accountId: string;
+  identityId: string;
+  mailboxId: string; // where the sent copy is filed
+  from?: string; // default From
+}
+```
+
+### `JmapMessage`
+
+```ts
+interface JmapMessage {
+  to: string; // one address or a comma-separated list
+  from?: string; // else JmapConfig.from
   subject?: string;
-  text?: string;
+  text?: string; // one of text or html is required
   html?: string;
   replyTo?: string;
   headers?: Record<string, string>;
 }
-interface SmtpSendInfo {
-  // the raw result of transport.sendMail
-  messageId?: string;
-  accepted?: ReadonlyArray<string | { address: string }>;
-  rejected?: ReadonlyArray<string | { address: string }>;
-}
-interface SmtpSendResult {
-  messageId: string; // the SMTP handle — store as the queue providerId
-  accepted: string[];
-  rejected: string[];
-}
-interface SmtpTransport {
-  sendMail(options: SmtpMailOptions): Promise<SmtpSendInfo>;
-} // the injected seam
-type SmtpSender = (message: SmtpMessage) => Promise<SmtpSendResult>; // what createSmtpSender returns
 ```
 
-### `validateSmtpConfig(config) → SmtpConfig & { secure: boolean }` (pure)
-
-Validate a host `SmtpConfig` and resolve `secure` (defaults to `true` for
-port 465, else `false`). Throws a plain `Error` on an invalid host, port (must
-be an integer in 1..65535), or auth block. No I/O.
-
-### `toMailOptions(message, config) → SmtpMailOptions` (pure)
-
-Build the transport `sendMail` options from a `SmtpMessage`: resolve
-`from` (message → `config.from`), require one of `text`/`html`, and reject CR/LF
-injection in `to`/`from`/`replyTo`/`subject`/`headers`. Throws on an invalid
-message. No I/O.
-
-### `sendViaSmtp(transport, message, config?) → Promise<SmtpSendResult>` (pure, injectable)
-
-Send one message through an **injected** `SmtpTransport` and normalize the
-result. Validates the message first (`toMailOptions`), then calls
-`transport.sendMail`. Throws when the transport throws (the host catches it and
-calls `markFailed`). Pass a real `nodemailer` transport in production, or a fake
-in a unit test — network-free when using a fake transport; a real transport
-performs network I/O.
-
-### `createSmtpTransport(config) → SmtpTransport` (Node only)
-
-Build a real `nodemailer` transport from a `SmtpConfig` (validated first). The
-thin `nodemailer.createTransport` wrapper; call it from a `"use node"` action.
-
-### `createSmtpSender(config) → (message: SmtpMessage) => Promise<SmtpSendResult>` (Node only)
-
-Build a bound sender over a real `nodemailer` transport — the one call a host
-wires into its `"use node"` flush action.
+### `JmapSendResult`
 
 ```ts
-"use node";
-import { createSmtpSender } from "@vllnt/convex-email/smtp";
-
-const send = createSmtpSender({
-  host: process.env.SMTP_HOST!,
-  port: 465,
-  secure: true,
-  auth: { user: process.env.SMTP_USER!, pass: process.env.SMTP_PASS! },
-});
-const { messageId } = await send({ to, from, subject, html });
-await email.markSent(ctx, id, { providerId: messageId });
-```
-
-### Wiring to the queue
-
-The host's flush action: `listByStatus("queued")` → for each, `markSending` →
-`send(...)` → `markSent({ providerId })` or `markFailed({ error })`.
-`markFailed` re-queues until the attempt budget is spent. The repository's
-example app (`example/convex/example.ts`, `flushQueuedOverSmtp`; not part of the
-npm package) has the full loop, exercised under `convex-test` with a fake
-transport:
-https://github.com/vllnt/convex-email/blob/main/example/convex/example.ts
-
-## JMAP transport (optional) — `@vllnt/convex-email/jmap`
-
-A separate, optional export that sends a queued message over **any JMAP server's
-HTTP API** — **Stalwart, Fastmail, Cyrus, Apache James**. JMAP is the protocol
-(RFC 8620 core + 8621 mail/submission); the server is host config. Unlike SMTP
-it runs in a **plain Convex action** — JMAP is HTTP, so the host's runtime
-`fetch` works in V8: **no `"use node"`, no `nodemailer`, zero extra
-dependencies**. It is a protocol, not a vendor — this is `./jmap`, never
-`./stalwart`; swapping the server is a config change. The whole adapter is pure
-(an injected `fetch`) and covered at 100%; it rejects CR/LF header injection in
-every address, subject, and header value.
-
-### Types
-
-```ts
-interface JmapConfig {
-  endpoint: string; // the JMAP API URL the calls POST to (the session apiUrl)
-  token: string; // bearer access token (a server-side secret)
-  accountId: string; // the urn:ietf:params:jmap:mail primary account
-  identityId: string; // the sending Identity
-  mailboxId: string; // the mailbox the sent copy is filed in (typically Sent)
-  from?: string; // default From when a message omits one
-}
-interface JmapMessage {
-  to: string; // one address or a comma-separated list
-  from?: string; // falls back to JmapConfig.from
-  subject?: string;
-  text?: string;
-  html?: string; // one of text/html is required
-  replyTo?: string;
-  headers?: Record<string, string>; // set as JMAP header:Name:asText
-}
 interface JmapSendResult {
-  messageId: string; // the EmailSubmission id — store as the queue providerId
-  emailId: string; // the created Email id
+  messageId: string; // EmailSubmission id; store as providerId
+  emailId: string; // created Email id
 }
-interface JmapDiscoverOptions {
-  sessionUrl: string; // the JMAP session resource, e.g. https://host/.well-known/jmap
-  token: string; // bearer access token
-  from?: string; // pick the identity with this address; else the first identity
-}
+```
+
+### `JmapSender`
+
+```ts
+type JmapSender = (message: JmapMessage) => Promise<JmapSendResult>;
+```
+
+### `JmapFetch`
+
+```ts
+type JmapFetch = (url: string, init: JmapRequestInit) => Promise<JmapResponse>;
+```
+
+Pass `(url, init) => fetch(url, init)` in a Convex action, or a fake in tests.
+
+### `JmapRequestInit`
+
+```ts
 interface JmapRequestInit {
-  method: string;
+  method: string; // "GET" for the session, "POST" for API calls
   headers: Record<string, string>;
   body?: string;
 }
+```
+
+### `JmapResponse`
+
+```ts
 interface JmapResponse {
   ok: boolean;
   status: number;
   json(): Promise<unknown>;
 }
-type JmapFetch = (url: string, init: JmapRequestInit) => Promise<JmapResponse>; // injected fetch
-type JmapSender = (message: JmapMessage) => Promise<JmapSendResult>; // what createJmapSender returns
 ```
 
-### `discoverJmapSession(fetchFn, opts) → Promise<JmapConfig>`
-
-Resolve a `JmapConfig` from a JMAP session: fetch the session resource
-(`opts.sessionUrl`, e.g. `https://host/.well-known/jmap`) with a bearer
-`opts.token` for the `apiUrl` + primary mail account, then `Identity/get` for
-the sending identity (matched to `opts.from`, else the first) and `Mailbox/get`
-for the Sent (else Drafts, else first) mailbox. Run it once; pass the result to
-`createJmapSender` / `sendViaJmap`.
-
-### `sendViaJmap(fetchFn, message, config) → Promise<JmapSendResult>` (pure, injectable)
-
-Send one message through an **injected** `fetch`: validate the config, build the
-two-call JMAP batch (`Email/set` create → `EmailSubmission/set` submit), POST
-it, and parse the result. Throws on an HTTP or JMAP error (the host catches it
-and calls `markFailed`). Pass the host's runtime `fetch` in production, or a
-fake in a unit test.
-
-### `createJmapSender(config, fetchFn) → (message: JmapMessage) => Promise<JmapSendResult>`
-
-Bind a resolved `config` + `fetch` into a one-call sender — the call a host
-wires into its flush action (a plain Convex action — no `"use node"`).
+### `JmapDiscoverOptions`
 
 ```ts
-import {
-  createJmapSender,
-  discoverJmapSession,
-} from "@vllnt/convex-email/jmap";
-
-const config = await discoverJmapSession((u, i) => fetch(u, i), {
-  sessionUrl: "https://mail.example.com/.well-known/jmap",
-  token: process.env.JMAP_TOKEN!,
-  from: "no-reply@app.com",
-});
-const send = createJmapSender(config, (u, i) => fetch(u, i));
-const { messageId } = await send({ to, from, subject, html, text });
-await email.markSent(ctx, id, { providerId: messageId });
+interface JmapDiscoverOptions {
+  sessionUrl: string; // for example https://mail.example.com/.well-known/jmap
+  token: string;
+  from?: string; // pick the identity with this address
+}
 ```
 
-The lower-level pure builders are also exported (no I/O; each throws a plain
-`Error` on invalid input):
+## SMTP transport
 
-- `validateJmapConfig(config: JmapConfig) → JmapConfig`: checks that
-  `endpoint`, `token`, `accountId`, `identityId` and `mailboxId` are non-empty
-  strings and returns the config unchanged.
-- `buildEmailCreate(message: JmapMessage, config: Pick<JmapConfig, "from" | "mailboxId">) → { email: Record<string, unknown>; envelope: { mailFrom: { email: string }; rcptTo: Array<{ email: string }> } }`:
-  the JMAP `Email/set` create object and the submission envelope. Resolves
-  `from`, requires one of `text`/`html`, and rejects CR/LF. The return type is
-  not exported by name.
-- `buildSubmitRequest(message: JmapMessage, config: JmapConfig) → { using: string[]; methodCalls: unknown[] }`:
-  the full request body, an `Email/set` create (creation id `draft`) followed by
-  an `EmailSubmission/set` that references `#draft`.
-- `parseSubmitResponse(json: unknown) → JmapSendResult`: rejects method-level
-  errors and `notCreated` entries, then reads the created `Email` id and the
-  `EmailSubmission` id.
+`@vllnt/convex-email/smtp` sends over any SMTP server with `nodemailer`.
+Importing this entry needs `nodemailer` installed, even for the helpers that do
+not use it (the entry re-exports a module that imports `nodemailer`); without
+it the import fails with `ERR_MODULE_NOT_FOUND`. Call it from a Node action
+(`"use node"`). `nodemailer` 10.1.4 is the first release with no advisory in
+the GitHub Advisory Database; 10.x needs Node.js 20 or later.
 
-### Wiring to the queue (and routing both transports)
-
-Same loop as SMTP: `listByStatus("queued")` → `markSending` → `send(...)` →
-`markSent({ providerId })` / `markFailed`. To support **both** SMTP and JMAP off
-one queue, route per message by its stored `transport` tag — a `senders` map
-keyed by `"smtp"` / `"jmap"` picks the adapter. The repository's example app
-(`example/convex/example.ts`: `flushQueuedOverJmap`, `flushQueuedRouted`; not
-part of the npm package) exercises both under `convex-test` with a fake `fetch`:
-https://github.com/vllnt/convex-email/blob/main/example/convex/example.ts
-
-## Test helper — `@vllnt/convex-email/test`
-
-### `register(t, name = "email") → void`
-
-Mount the component in a [`convex-test`](https://docs.convex.dev/testing)
-instance so an app can test its own integration. `name` must match the name the
-app mounts the component under (default `"email"`). The entry ships as
-TypeScript source, so the consuming app needs `convex-test` and `vitest` (with
-Vite's `import.meta.glob`):
+### `createSmtpSender`
 
 ```ts
-/// <reference types="vite/client" />
-import { convexTest } from "convex-test";
-import { register } from "@vllnt/convex-email/test";
-import schema from "./schema";
-
-const t = convexTest(schema, import.meta.glob("./**/*.ts"));
-register(t);
+createSmtpSender(config: SmtpConfig): SmtpSender
 ```
+
+Builds a transport with `createSmtpTransport(config)` and returns a function
+that sends one `SmtpMessage` with `sendViaSmtp`, using `config.from` as the
+default sender.
+
+### `createSmtpTransport`
+
+```ts
+createSmtpTransport(config: SmtpConfig): SmtpTransport
+```
+
+Validates `config` with `validateSmtpConfig`, then returns
+`nodemailer.createTransport({ host, port, secure, auth })`.
+
+### `sendViaSmtp`
+
+```ts
+sendViaSmtp(transport: SmtpTransport, message: SmtpMessage, config?: Pick<SmtpConfig, "from">): Promise<SmtpSendResult>
+```
+
+Builds the options with `toMailOptions`, calls `transport.sendMail`, and
+returns `{ messageId, accepted, rejected }` (`messageId` is `""` when the
+server returned none). Throws when the transport throws. A resolved send can
+still list addresses in `rejected`.
+
+### `validateSmtpConfig`
+
+```ts
+validateSmtpConfig(config: SmtpConfig): SmtpConfig & { secure: boolean }
+```
+
+Throws unless `host` is a non-empty string, `port` is an integer in 1..65535,
+and `auth` (when set) has string `user` and `pass`. Returns the config with
+`secure` set: the given value, else `true` for port 465 and `false` otherwise.
+
+### `toMailOptions`
+
+```ts
+toMailOptions(message: SmtpMessage, config: Pick<SmtpConfig, "from">): SmtpMailOptions
+```
+
+Resolves `from` (`message.from`, else `config.from`), requires `to` and one of
+`text`/`html`, and throws on CR or LF in `to`, `from`, `replyTo`, `subject` and
+header names and values.
+
+### `SmtpConfig`
+
+```ts
+interface SmtpConfig {
+  host: string;
+  port: number;
+  secure?: boolean; // default: true for port 465, else false
+  auth?: { user: string; pass: string }; // omit for an unauthenticated relay
+  from?: string; // default From
+}
+```
+
+### `SmtpMessage`
+
+```ts
+interface SmtpMessage {
+  to: string;
+  from?: string; // else SmtpConfig.from
+  subject?: string;
+  text?: string; // one of text or html is required
+  html?: string;
+  replyTo?: string;
+  headers?: Record<string, string>;
+}
+```
+
+### `SmtpMailOptions`
+
+```ts
+interface SmtpMailOptions {
+  to: string;
+  from: string;
+  subject?: string | undefined;
+  text?: string | undefined;
+  html?: string | undefined;
+  replyTo?: string | undefined;
+  headers?: Record<string, string> | undefined;
+}
+```
+
+### `SmtpSendInfo`
+
+```ts
+interface SmtpSendInfo {
+  messageId?: string;
+  accepted?: ReadonlyArray<string | { address: string }>;
+  rejected?: ReadonlyArray<string | { address: string }>;
+}
+```
+
+### `SmtpSendResult`
+
+```ts
+interface SmtpSendResult {
+  messageId: string; // store as providerId
+  accepted: string[];
+  rejected: string[];
+}
+```
+
+### `SmtpSender`
+
+```ts
+type SmtpSender = (message: SmtpMessage) => Promise<SmtpSendResult>;
+```
+
+### `SmtpTransport`
+
+```ts
+interface SmtpTransport {
+  sendMail(options: SmtpMailOptions): Promise<SmtpSendInfo>;
+}
+```
+
+A `nodemailer` transporter fits; pass a fake in tests.
+
+## Other entry points
+
+### `convex.config`
+
+```ts
+import email from "@vllnt/convex-email/convex.config";
+```
+
+The component definition (`defineComponent("email")`). Pass it to
+`app.use(email)`, or `app.use(email, { name })` for another instance with its
+own table and cron.
+
+### `register`
+
+```ts
+register<TSchema extends GenericSchema>(t: TestConvex<SchemaDefinition<TSchema, boolean>>, name?: string): void
+```
+
+Registers the component in a `convex-test` instance built with any host
+schema. `name` defaults to `"email"` and must match the `app.use` name. The
+entry ships TypeScript source that uses Vite's `import.meta.glob`, so the app
+needs `convex-test`, `vitest` and `vite` (plus `@edge-runtime/vm` for Vitest's
+`edge-runtime` environment).
+
+### `ComponentApi`
+
+```ts
+import type { ComponentApi } from "@vllnt/convex-email/_generated/component";
+```
+
+The generated type of a mounted instance (`components.email`).

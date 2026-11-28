@@ -1,7 +1,7 @@
 {
   "name": "@vllnt/convex-email",
   "version": "0.1.1",
-  "description": "Durable, transport-agnostic outbound transactional email queue — enqueue, retry, idempotent send, and per-message delivery status as a Convex component",
+  "description": "TypeScript Convex component for outbound transactional email: durable send queue, retry budget, idempotent enqueue, delivery status, SMTP and JMAP senders.",
   "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@10.34.9",
@@ -59,9 +59,10 @@
     "generate:llms": "node scripts/generate-llms.mjs",
     "preversion": "pnpm install --frozen-lockfile && pnpm build && pnpm test:coverage && pnpm typecheck && pnpm generate:llms",
     "check:agents": "node -e \"const f=require('node:fs');if(!f.existsSync('AGENTS.md')||f.existsSync('CLAUDE.md')||f.existsSync('.claude'))process.exit(1)\"",
-    "check:package": "node scripts/test-check-package-docs.mjs && node scripts/check-package-docs.mjs",
+    "check:package": "node scripts/test-check-package-docs.mjs && node scripts/check-package-docs.mjs && node scripts/test-check-documentation.mjs",
     "check:imports": "node scripts/check-package-imports.mjs",
-    "codegen": "pnpm convex codegen --component-dir ./src/component"
+    "codegen": "pnpm convex codegen --component-dir ./src/component",
+    "test:package": "node scripts/test-package.mjs"
   },
   "peerDependencies": {
     "convex": "^1.45.0",
@@ -127,10 +128,13 @@
   "keywords": [
     "convex",
     "convex-component",
+    "typescript",
     "email",
     "transactional-email",
     "email-queue",
-    "transport-agnostic",
+    "outbound-email",
+    "retry",
+    "delivery-status",
     "smtp",
     "jmap",
     "nodemailer"

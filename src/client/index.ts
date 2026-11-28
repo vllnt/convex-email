@@ -149,6 +149,8 @@ interface RunMutationCtx {
  * // ... clients poll:
  * const msg = await email.get(ctx, messageId);   // typed payload
  * ```
+ *
+ * @see https://oss.vllnt.com/packages/convex-email
  */
 export class Email<TPayload = unknown> {
   private readonly payloadValidator: Parser<TPayload> | undefined;

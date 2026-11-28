@@ -43,7 +43,9 @@ at least one adversarial test (auth-denied, invalid input, boundary).
 - Target `main`
 - One logical change per PR
 - Include tests for new behavior or bug fixes
-- Ensure all checks pass: `pnpm typecheck && pnpm lint && pnpm test:coverage && pnpm build`
+- Ensure all checks pass: `pnpm typecheck && pnpm lint && pnpm test:coverage && pnpm build && pnpm test:package`
+- `pnpm test:package` enforces the docs contract in `scripts/check-documentation.mjs`: a new public
+  export or thrown error needs a README API or Errors row and a `docs/API.md` entry
 
 ## Releases
 
