@@ -50,7 +50,7 @@ const INLINE_CODE = /(?<!`)(`+)(?!`).*?(?<!`)\1(?!`)/g;
 function stripCode(text) {
   const kept = [];
   let fence;
-  for (const line of text.split("\n")) {
+  for (const line of text.split(/\r?\n/)) {
     if (fence !== undefined) {
       const close = FENCE_OPEN.exec(line);
       if (

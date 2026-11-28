@@ -234,6 +234,17 @@ try {
     0,
   );
   expect(
+    "link syntax inside a CRLF fence passes",
+    run(
+      {
+        ...COMPLETE,
+        "README.md": "# f\r\n\r\n```md\r\n[a](./a.md)\r\n```\r\n",
+      },
+      allFiles,
+    ),
+    0,
+  );
+  expect(
     "broken link after a closed tilde fence fails",
     run(
       {
